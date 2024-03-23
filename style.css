@@ -1,0 +1,35 @@
+body
+{
+    background-color: black;
+    margin: 0;
+
+    touch-action: none;
+}
+
+#gamecanvas
+{
+    background-color: #404040;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+	/*image-rendering: -moz-crisp-edges;
+	image-rendering: -webkit-optimize-contrast;
+	image-rendering: optimize-contrast;
+	-ms-interpolation-mode: nearest-neighbor;*/
+
+    margin: auto;
+    display: block;
+    position: absolute;
+    top:0;
+    bottom:0;
+    left:0;
+    right:0;
+}
+
+#gamecanvas:focus {
+    outline: none;
+}
+
+@font-face {
+    font-family: 'GameFont';
+    src: url('data/gamefont.ttf');
+}

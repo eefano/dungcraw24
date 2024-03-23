@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>dungcraw24</title>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" type="text/css" media="all" href="style.css" />
+  <!--
+  <link rel="preload" href="data/gamefont.ttf" as="font" crossorigin />
+  -->
+  <link rel="prefetch" href="data/gamefont.json" as="fetch" />
+  <link rel="preload" href="data/gamefont.png" as="image" />
+  <link rel="preload" href="data/up.png" as="image" />
+  <!--
+  <link rel="prefetch" href="data/something.mp3" as="fetch" />
+  -->
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module" src="main.js"></script>
+
+  <script type="text/javascript">
+
+    function refocus() {
+      document.getElementById("gamecanvas").focus();
+    }
+
+    async function preload(as, suffix, callback) {
+      let elements = document.querySelectorAll(
+        'link[as="' + as + '"][href$="' + suffix + '"]'
+      );
+      for (let i = 0; i < elements.length; i++) {
+        let href = elements[i].attributes["href"].nodeValue;
+        let v = href.substring(5);
+        await callback(v, elements[i].href);
+      }
+    }
+
+    function resize() {
+      canvas = document.getElementById("gamecanvas");
+
+      let h = window.innerHeight * window.devicePixelRatio;
+      let w = window.innerWidth * window.devicePixelRatio;
+
+      let kx = (w / canvas.width) >> 0;
+      let ky = (h / canvas.height) >> 0;
+      let k = 1;
+
+      if (kx < ky) {
+        if (kx > 1) k = kx;
+        else k = 1;
+      } else {
+        if (ky > 1) k = ky;
+        else k = 1;
+      }
+
+      canvas.style.width = (canvas.width * k) / window.devicePixelRatio + "px";
+      canvas.style.height = (canvas.height * k) / window.devicePixelRatio + "px";
+    }
+  </script>
+</head>
+
+<body onload="resize();refocus()" onresize="resize()">
+  <canvas id="gamecanvas" width="360" height="360" tabindex="1"></canvas>
+</body>
+
+</html>
