@@ -8,7 +8,10 @@
   <!--
   <link rel="preload" href="data/gamefont.ttf" as="font" crossorigin />
   -->
+  <link rel="prefetch" href="data/world.json" as="fetch" />
+
   <link rel="prefetch" href="data/gamefont.json" as="fetch" />
+
   <link rel="preload" href="data/gamefont.png" as="image" />
   <link rel="preload" href="data/up.png" as="image" />
   <!--
@@ -68,6 +71,7 @@
 </head>
 
 <body onload="resize();refocus()" onresize="resize()">
+  <a id="downloadAnchorElem" style="display:none"></a>
   <canvas id="gamecanvas" width="360" height="360" tabindex="1" oncontextmenu="return false;"></canvas>
 </body>
 

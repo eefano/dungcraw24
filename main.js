@@ -5,16 +5,27 @@ var xres, yres, canvas, gfx, txt;
 var keystate = [];
 var keytrigs = new Set();
 
-
 var jsons = {};
 
+const ViewDistance = 5;
 
 function step() {
   window.requestAnimationFrame(step);
 }
 
-function init() {}
-
+function init() {
+  world = jsons["world.json"];
+  if (world === undefined) {
+    world = {
+      "0 0 0": {
+        n: [0, 0, 0, 0, 0, 0],
+        w: [1, 2, 3, 4, 5, 6],
+      },
+    };
+  }
+  //console.log(world);
+  redraw();
+}
 
 function checkertexture(width, height, c) {
   const size = width * height * 4;
@@ -55,23 +66,88 @@ const rHALF = Math.PI / 2.0;
 // TEH MASTERTABLE !!!
 
 let directions = [
-  { mov: [0, 0, +1], mask: 0b000001, oppo: 0b111101, front: 0, back:1, sx:2, dx:3, up:4, dw:5, rotx: 0, roty: 0 },
-  { mov: [0, 0, -1], mask: 0b000010, oppo: 0b111110, front: 1, back:0, sx:3, dx:2, up:4, dw:5, rotx: 0, roty: Math.PI },
-  { mov: [+1, 0, 0], mask: 0b000100, oppo: 0b110111, front: 2, back:3, sx:1, dx:0, up:4, dw:5, rotx: 0, roty: +rHALF },
-  { mov: [-1, 0, 0], mask: 0b001000, oppo: 0b111011, front: 3, back:2, sx:0, dx:1, up:4, dw:5, rotx: 0, roty: -rHALF },
-  { mov: [0, +1, 0], mask: 0b010000, oppo: 0b011111, front: 4, back:5, sx:0, dx:1, up:3, dw:2, rotx: -rHALF, roty: 0 },
-  { mov: [0, -1, 0], mask: 0b100000, oppo: 0b101111, front: 5, back:4, sx:1, dx:0, up:2, dw:3, rotx: +rHALF, roty: 0 },
+  {
+    mov: [0, 0, +1],
+    mask: 0b000001,
+    oppo: 0b111101,
+    front: 0,
+    back: 1,
+    sx: 2,
+    dx: 3,
+    up: 4,
+    dw: 5,
+    rotx: 0,
+    roty: 0,
+  },
+  {
+    mov: [0, 0, -1],
+    mask: 0b000010,
+    oppo: 0b111110,
+    front: 1,
+    back: 0,
+    sx: 3,
+    dx: 2,
+    up: 4,
+    dw: 5,
+    rotx: 0,
+    roty: Math.PI,
+  },
+  {
+    mov: [+1, 0, 0],
+    mask: 0b000100,
+    oppo: 0b110111,
+    front: 2,
+    back: 3,
+    sx: 1,
+    dx: 0,
+    up: 4,
+    dw: 5,
+    rotx: 0,
+    roty: +rHALF,
+  },
+  {
+    mov: [-1, 0, 0],
+    mask: 0b001000,
+    oppo: 0b111011,
+    front: 3,
+    back: 2,
+    sx: 0,
+    dx: 1,
+    up: 4,
+    dw: 5,
+    rotx: 0,
+    roty: -rHALF,
+  },
+  {
+    mov: [0, +1, 0],
+    mask: 0b010000,
+    oppo: 0b011111,
+    front: 4,
+    back: 5,
+    sx: 0,
+    dx: 1,
+    up: 3,
+    dw: 2,
+    rotx: -rHALF,
+    roty: 0,
+  },
+  {
+    mov: [0, -1, 0],
+    mask: 0b100000,
+    oppo: 0b101111,
+    front: 5,
+    back: 4,
+    sx: 1,
+    dx: 0,
+    up: 2,
+    dw: 3,
+    rotx: +rHALF,
+    roty: 0,
+  },
 ];
 
 let walls;
-
-let world = {
-  '0 0 0': {
-    n: [,,,,,],
-    w: [1, 2, 3, 4, 5, 6],
-    s: 0,
-  },
-};
+let world;
 
 let scene, camera, renderer, raycaster;
 
@@ -79,24 +155,23 @@ const fov = 109.15;
 
 const pointer = new THREE.Vector2();
 
-let meshes = [], meshindex = 0, scanvalue = 0;
+let meshes = [],
+  meshindex = 0,
+  scanvalue = 0;
 
-let cameradir = 0, cameracell = '0 0 0';
+let cameradir = 0,
+  cameracell = "0 0 0";
 
 let selcells = new Map();
 
-function getmesh(wall, cellid, dir, xp, yp ,zp)
-{
+function getmesh(wall, cellid, dir, xp, yp, zp) {
   let mesh;
-  if(meshindex==meshes.length)
-  {
+  if (meshindex == meshes.length) {
     mesh = new THREE.Mesh(wall.geometry, wall.material);
     mesh.userData = { cellid, dirmask: dir.mask };
     meshes.push(mesh);
-    scene.add(mesh);    
-  }
-  else
-  {
+    scene.add(mesh);
+  } else {
     mesh = meshes[meshindex];
     mesh.userData.cellid = cellid;
     mesh.userData.dirmask = dir.mask;
@@ -114,135 +189,125 @@ function getmesh(wall, cellid, dir, xp, yp ,zp)
   return mesh;
 }
 
-
 function scan(cellid, energy, dirmask, xp, yp, zp) {
   if (energy <= 0) return;
   energy--;
   let cell = world[cellid];
-  if (cell.s == scanvalue) return;
-  cell.s = scanvalue;
+  if (cell.scanvalue == scanvalue) return;
+  cell.scanvalue = scanvalue;
   const selected = selcells.get(cellid);
 
   //console.log('cell',cellid, 'energy', energy, 'dirmask', dirmask.toString(2), 'xp',xp,'yp',yp,'zp',zp);
 
   directions.forEach((dir, dirid) => {
     if (dirmask & dir.mask) {
-
       let wallindex = cell.w[dirid];
-      if (wallindex!==undefined) {
+      if (wallindex != 0) {
         //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex);
         let wall = walls[wallindex];
 
         getmesh(wall, cellid, dir, xp, yp, zp).layers.enable(1);
 
-        if(selected!==undefined && (selected & dir.mask))
-        {
+        if (selected !== undefined && selected & dir.mask) {
           getmesh(walls[0], cellid, dir, xp, yp, zp).layers.disable(1);
-        }    
+        }
       }
 
       const next = cell.n[dirid];
-      if (next!==undefined) {
+      if (next != 0) {
         const mov = dir.mov;
-        scan(next, energy, dirmask & dir.oppo, xp+mov[0], yp+mov[1], zp+mov[2]);
+        scan(
+          next,
+          energy,
+          dirmask & dir.oppo,
+          xp + mov[0],
+          yp + mov[1],
+          zp + mov[2]
+        );
       }
     }
   });
 }
 
-
-function rerender()
-{
+function rerender() {
   //camera.position.x = p[0];
   //camera.position.y = p[1];
   //camera.position.z = p[2];
   let dir = directions[cameradir];
-  camera.rotation.x = dir.rotx;
+  //camera.rotation.x = dir.rotx;
   camera.rotation.y = dir.roty;
 
   renderer.render(scene, camera);
 }
 
-function redraw()
-{
-  meshindex=0; scanvalue++;
-    
-  scan(cameracell, 10, directions[cameradir].oppo, 0, 0 ,0);
-  for(let i=meshindex;i<meshes.length;i++) 
-  {
+function redraw() {
+  meshindex = 0;
+  scanvalue++;
+
+  scan(cameracell, ViewDistance * 2, directions[cameradir].oppo, 0, 0, 0);
+  for (let i = meshindex; i < meshes.length; i++) {
     meshes[i].visible = false;
-    meshes[i].layers.disable( 1 );
+    meshes[i].layers.disable(1);
   }
   //console.log(meshindex,meshes.length);
-  
+
   rerender();
 }
 
-function toCellId(p)
-{
-  return p.join(' ');
+function toCellId(p) {
+  return p.join(" ");
 }
-function toPosition(cellid)
-{
-  return cellid.split(' ').map(v=>Number(v));
+function toPosition(cellid) {
+  return cellid.split(" ").map((v) => Number(v));
 }
 
-
-function demolish(newid, newcell, cellid, cell, d)
-{
+function demolish(newid, newcell, cellid, cell, d) {
   newcell.n[d.back] = cellid;
-  newcell.w[d.back] = undefined;
+  newcell.w[d.back] = 0;
   cell.n[d.front] = newid;
-  cell.w[d.front] = undefined; 
+  cell.w[d.front] = 0;
 }
 
-function neighborId(cellid, d)
-{
+function neighborId(cellid, d) {
   const mov = d.mov;
   const p = toPosition(cellid);
-  p[0]+=mov[0];
-  p[1]+=mov[1];
-  p[2]+=mov[2];
+  p[0] += mov[0];
+  p[1] += mov[1];
+  p[2] += mov[2];
   return toCellId(p);
 }
 
-function demolishMany(cellid,cell, ...ddid)
-{
-  ddid.forEach((dirid)=> {
+function demolishMany(cellid, cell, ...ddid) {
+  ddid.forEach((dirid) => {
     const d = directions[dirid];
-    const newid = neighborId(cellid,d);
+    const newid = neighborId(cellid, d);
     const newcell = world[newid];
-    if(newcell!==undefined)
-    {
+    if (newcell !== undefined) {
       demolish(newid, newcell, cellid, cell, d);
     }
   });
 }
 
-function push(cellid, dirid, bulldoze = true)
-{
+function push(cellid, dirid, bulldoze = true) {
   const cell = world[cellid];
-  if(cell.n[dirid]===undefined)
-  {
+  if (cell.n[dirid] == 0) {
     const d = directions[dirid];
     const newid = neighborId(cellid, d);
     let newcell = world[newid];
 
-    if(newcell===undefined)
-    {
+    if (newcell === undefined) {
       newcell = {
-        n: [,,,,,],
-        w: cell.w.map((v,i)=>(v===undefined && cell.n[i]!==undefined ? (i+1) : v)),
-        s: cell.s,
-      }    
-      world[newid]=newcell;    
+        n: [0, 0, 0, 0, 0, 0],
+        w: cell.w.map((v, i) => (v == 0 && cell.n[i] != 0 ? i + 1 : v)),
+        scanvalue: cell.scanvalue,
+      };
+      world[newid] = newcell;
     }
-  
-    demolish(newid,newcell,cellid,cell,d);
 
-    if(bulldoze)
-    {
-      demolishMany(newid,newcell,d.sx, d.dx, d.up, d.dw, d.front);
+    demolish(newid, newcell, cellid, cell, d);
+
+    if (bulldoze) {
+      demolishMany(newid, newcell, d.sx, d.dx, d.up, d.dw, d.front);
     }
 
     //console.log('dirid',dirid);
@@ -250,92 +315,110 @@ function push(cellid, dirid, bulldoze = true)
   }
 }
 
-function movement(dirid)
-{
+function movement(dirid) {
   const cell = world[cameracell];
   const next = cell.n[dirid];
-  if(next!==undefined)
-  {
+  if (next != 0) {
     cameracell = next;
     redraw();
   }
 }
 
-
-
 function keydown(e) {
   if (keystate[e.keyCode]) return;
   keystate[e.keyCode] = true;
   keytrigs.add(e.keyCode);
-  switch(e.keyCode)
-  {
+
+  switch (e.keyCode) {
     case 13: // ENTER
     case 32: // SPACE
-    if(selcells.size>0)
-    {
-      selcells.forEach((selmask,cellid)=>
-      {
-        directions.forEach((d,dirid)=>
-        {
-          if(selmask & d.mask) push(cellid,dirid)
+      if (selcells.size > 0) {
+        selcells.forEach((selmask, cellid) => {
+          directions.forEach((d, dirid) => {
+            if (selmask & d.mask) push(cellid, dirid);
+          });
         });
-      });
-      selcells.clear();
-    }
-    else
-    {
-      // CREATE ALCOVE
-      push(cameracell,cameradir, false);
-    }
-    redraw();
-    break;
+        selcells.clear();
+      } else {
+        // CREATE ALCOVE
+        push(cameracell, cameradir, false);
+      }
+      redraw();
+      break;
 
     case 8: // BACKSPACE
-    selcells.clear();
-    redraw();
-    break;
-
-    case 37: // LEFT
-    case 'a':
-      cameradir = directions[cameradir].sx;
+      selcells.clear();
       redraw();
-    break;
+      break;
 
-    case 39: // RIGHT
-    case 'd':
-      cameradir = directions[cameradir].dx;
-      redraw();
-    break;
+    case 37: // LEFTARROW
+    case 65: // A
+      if (e.shiftKey) {
+        cameradir = directions[cameradir].sx;
+        redraw();
+      } else movement(directions[cameradir].sx);
+      break;
 
-    case 38: // FORWARD
-    case 'w':
-      movement(directions[cameradir].front);
-     break;
+    case 39: // RIGHTARROW
+    case 68: // D
+      if (e.shiftKey) {
+        cameradir = directions[cameradir].dx;
+        redraw();
+      } else movement(directions[cameradir].dx);
+      break;
 
-    case 40: // BACKWARD
-    case 's':
-      movement(directions[cameradir].back);
-    break;
+    case 38: // UPARROW
+    case 87: // W
+      if (e.shiftKey) {
+        camera.rotation.x = rHALF;
+        redraw();
+      } else movement(directions[cameradir].front);
+      break;
 
+    case 83: // S
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        var dataStr =
+          "data:text/json;charset=utf-8," +
+          encodeURIComponent(
+            JSON.stringify(world, (key, value) =>
+              key === "scanvalue" ? undefined : value
+            )
+          );
+        var dlAnchorElem = document.getElementById("downloadAnchorElem");
+        dlAnchorElem.setAttribute("href", dataStr);
+        dlAnchorElem.setAttribute("download", "world.json");
+        dlAnchorElem.click();
+        break;
+      }
+    case 40: // DOWNARROW
+      if (e.shiftKey) {
+        camera.rotation.x = -rHALF;
+        redraw();
+      } else movement(directions[cameradir].back);
+      break;
   }
 }
 function keyup(e) {
   keystate[e.keyCode] = false;
+  //console.log(e);
+  if (e.shiftKey && camera.rotation.x != 0) {
+    camera.rotation.x = 0;
+    redraw();
+  }
 }
 
 let dragging;
 
 function selectCell(e) {
-
   var rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ( ( e.clientX - rect.left ) / ( rect.right - rect.left ) ) * 2 - 1;
-  pointer.y = - ( ( e.clientY - rect.top ) / ( rect.bottom - rect.top) ) * 2 + 1;
-  
-  raycaster.setFromCamera( pointer, camera );
-	const intersects = raycaster.intersectObjects( scene.children, false );
-  
-  if(intersects.length>0)
-  {
+  pointer.x = ((e.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
+
+  raycaster.setFromCamera(pointer, camera);
+  const intersects = raycaster.intersectObjects(scene.children, false);
+
+  if (intersects.length > 0) {
     const o = intersects[0].object;
     const data = o.userData;
     //console.log('data',data);
@@ -343,10 +426,9 @@ function selectCell(e) {
     const dirmask = data.dirmask;
     let sel = selcells.get(cellid) || 0;
 
-    if(dragging!==undefined)
-    {
+    if (dragging !== undefined) {
       //console.log('dragging',dragging,'dirmask',dirmask,'sel',sel & dirmask);
-      if(dragging[0]!=dirmask || dragging[1]==(sel & dirmask)) return;
+      if (dragging[0] != dirmask || dragging[1] == (sel & dirmask)) return;
     }
 
     sel = sel ^ dirmask;
@@ -358,31 +440,22 @@ function selectCell(e) {
   return;
 }
 
-
-function onmousemove(e)
-{
-  if(dragging!==undefined)
-  {
+function onmousemove(e) {
+  if (dragging !== undefined) {
     selectCell(e);
   }
 }
 
-function onmousedown(e)
-{ 
-  if(e.button==0)
-  {
+function onmousedown(e) {
+  if (e.button == 0) {
     dragging = selectCell(e);
   }
 }
-function onmouseup(e)
-{
-  if(e.button==0)
-  {
+function onmouseup(e) {
+  if (e.button == 0) {
     dragging = undefined;
   }
 }
-
-
 
 async function load() {
   canvas = document.getElementById("gamecanvas");
@@ -398,30 +471,33 @@ async function load() {
   }
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0, 0, 5);
+  scene.fog = new THREE.Fog(0, 0, ViewDistance);
   camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 1000);
   renderer = new THREE.WebGLRenderer({ canvas: canvas });
   raycaster = new THREE.Raycaster();
-  raycaster.layers.set( 1 );
+  raycaster.layers.set(1);
 
-
-  let up = await new THREE.TextureLoader().loadAsync( "data/up.png" );
+  let up = await new THREE.TextureLoader().loadAsync("data/up.png");
   // checkertexture(128, 128, 0xffff00);
 
   let materials = [
-    new THREE.MeshBasicMaterial({wireframe:true, color:0xffffff, fog:false }),
-    new THREE.MeshBasicMaterial({map: up, color: 0xffff00 }),
-    new THREE.MeshBasicMaterial({map: up, color: 0xafaf00 }),
-    new THREE.MeshBasicMaterial({map: up, color: 0x00ffff }),
-    new THREE.MeshBasicMaterial({map: up, color: 0x00afaf }),
-    new THREE.MeshBasicMaterial({map: up, color: 0xff00ff }),
-    new THREE.MeshBasicMaterial({map: up, color: 0xaf00af }),
-    new THREE.MeshBasicMaterial({map: up, color: 0xc0c0c0 }),
-   ];
+    new THREE.MeshBasicMaterial({
+      wireframe: true,
+      color: 0xffffff,
+      fog: false,
+    }),
+    new THREE.MeshBasicMaterial({ map: up, color: 0xffff00 }),
+    new THREE.MeshBasicMaterial({ map: up, color: 0xafaf00 }),
+    new THREE.MeshBasicMaterial({ map: up, color: 0x00ffff }),
+    new THREE.MeshBasicMaterial({ map: up, color: 0x00afaf }),
+    new THREE.MeshBasicMaterial({ map: up, color: 0xff00ff }),
+    new THREE.MeshBasicMaterial({ map: up, color: 0xaf00af }),
+    new THREE.MeshBasicMaterial({ map: up, color: 0xc0c0c0 }),
+  ];
 
   let geometries = [
     new THREE.PlaneGeometry(1, 1, 5, 5).translate(0, 0, -0.49),
-    new THREE.PlaneGeometry(1, 1, 1, 1).translate(0, 0, -0.5)
+    new THREE.PlaneGeometry(1, 1, 1, 1).translate(0, 0, -0.5),
   ];
 
   walls = [
@@ -434,9 +510,6 @@ async function load() {
     { material: materials[6], geometry: geometries[1] },
     { material: materials[7], geometry: geometries[1] },
   ];
-
-  redraw();
-   
 
   preload("image", ".png", (v, href) => {
     let i = new Image();
@@ -454,11 +527,12 @@ async function load() {
 
   await preload("fetch", ".json", async (v, href) => {
     const res = await fetch(href);
+    if (!res.ok) return;
     jsons[v] = await res.json();
   });
 
-  canvas.addEventListener("keydown", keydown);
-  canvas.addEventListener("keyup", keyup);
+  window.addEventListener("keydown", keydown);
+  window.addEventListener("keyup", keyup);
   canvas.addEventListener("mousedown", onmousedown);
   canvas.addEventListener("mouseup", onmouseup);
   canvas.addEventListener("mousemove", onmousemove);
