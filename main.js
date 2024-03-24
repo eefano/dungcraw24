@@ -52,26 +52,26 @@ const rHALF = Math.PI / 2.0;
 
 // [ front, back, left, right, up, down]
 
+// TEH MASTERTABLE !!!
+
 let directions = [
-  { mov: [0, 0, +1], mask: 0b000001, oppo: 0b111101, oppi:1, sx:2, dx:3, up:0, dw:0,  rotx: 0, roty: 0 },
-  { mov: [0, 0, -1], mask: 0b000010, oppo: 0b111110, oppi:0, sx:3, dx:2, up:0, dw:0, rotx: 0, roty: Math.PI },
-  { mov: [+1, 0, 0], mask: 0b000100, oppo: 0b110111, oppi:3, sx:1, dx:0, rotx: 0, roty: +rHALF },
-  { mov: [-1, 0, 0], mask: 0b001000, oppo: 0b111011, oppi:2, sx:0, dx:1, rotx: 0, roty: -rHALF },
-  { mov: [0, +1, 0], mask: 0b010000, oppo: 0b011111, oppi:5, sx:4, dx:4, rotx: -rHALF, roty: 0 },
-  { mov: [0, -1, 0], mask: 0b100000, oppo: 0b101111, oppi:4, sx:5, dx:5, rotx: +rHALF, roty: 0 },
+  { mov: [0, 0, +1], mask: 0b000001, oppo: 0b111101, front: 0, back:1, sx:2, dx:3, up:4, dw:5, rotx: 0, roty: 0 },
+  { mov: [0, 0, -1], mask: 0b000010, oppo: 0b111110, front: 1, back:0, sx:3, dx:2, up:4, dw:5, rotx: 0, roty: Math.PI },
+  { mov: [+1, 0, 0], mask: 0b000100, oppo: 0b110111, front: 2, back:3, sx:1, dx:0, up:4, dw:5, rotx: 0, roty: +rHALF },
+  { mov: [-1, 0, 0], mask: 0b001000, oppo: 0b111011, front: 3, back:2, sx:0, dx:1, up:4, dw:5, rotx: 0, roty: -rHALF },
+  { mov: [0, +1, 0], mask: 0b010000, oppo: 0b011111, front: 4, back:5, sx:0, dx:1, up:3, dw:2, rotx: -rHALF, roty: 0 },
+  { mov: [0, -1, 0], mask: 0b100000, oppo: 0b101111, front: 5, back:4, sx:1, dx:0, up:2, dw:3, rotx: +rHALF, roty: 0 },
 ];
 
 let walls;
 
-let world = [
-  {},
-  {
-    p: [0, 0, 0],
-    n: [0,0,0,0,0,0],
+let world = {
+  '0 0 0': {
+    n: [,,,,,],
     w: [1, 2, 3, 4, 5, 6],
     s: 0,
   },
-];
+};
 
 let scene, camera, renderer, raycaster;
 
@@ -81,18 +81,17 @@ const pointer = new THREE.Vector2();
 
 let meshes = [], meshindex = 0, scanvalue = 0;
 
-let cameradir = 0, cameracell = 1;
+let cameradir = 0, cameracell = '0 0 0';
 
-let selcells = new Set();
-let seldir=0;
+let selcells = new Map();
 
-function getmesh(wall, cell, cellid, dir, dirid)
+function getmesh(wall, cellid, dir, xp, yp ,zp)
 {
   let mesh;
   if(meshindex==meshes.length)
   {
     mesh = new THREE.Mesh(wall.geometry, wall.material);
-    mesh.userData = { cellid, dirid };
+    mesh.userData = { cellid, dirmask: dir.mask };
     meshes.push(mesh);
     scene.add(mesh);    
   }
@@ -100,51 +99,52 @@ function getmesh(wall, cell, cellid, dir, dirid)
   {
     mesh = meshes[meshindex];
     mesh.userData.cellid = cellid;
-    mesh.userData.dirid = dirid;
+    mesh.userData.dirmask = dir.mask;
     mesh.geometry = wall.geometry;
     mesh.material = wall.material;
     mesh.visible = true;
   }
   mesh.rotation.x = dir.rotx;
   mesh.rotation.y = dir.roty;
-  mesh.position.x = -cell.p[0];
-  mesh.position.y = -cell.p[1];
-  mesh.position.z = -cell.p[2];
+  mesh.position.x = -xp;
+  mesh.position.y = -yp;
+  mesh.position.z = -zp;
 
   meshindex++;
   return mesh;
 }
 
 
-function scan(cellid, energy, dirmask) {
+function scan(cellid, energy, dirmask, xp, yp, zp) {
   if (energy <= 0) return;
   energy--;
   let cell = world[cellid];
   if (cell.s == scanvalue) return;
   cell.s = scanvalue;
-  const selected = selcells.has(cellid);
+  const selected = selcells.get(cellid);
 
-  //console.log('cell',cellid, 'energy', energy, 'dirmask', dirmask.toString(2));
+  //console.log('cell',cellid, 'energy', energy, 'dirmask', dirmask.toString(2), 'xp',xp,'yp',yp,'zp',zp);
 
   directions.forEach((dir, dirid) => {
     if (dirmask & dir.mask) {
 
       let wallindex = cell.w[dirid];
-      if (wallindex>0) {
+      if (wallindex!==undefined) {
         //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex);
         let wall = walls[wallindex];
 
-        getmesh(wall, cell, cellid, dir, dirid);
+        getmesh(wall, cellid, dir, xp, yp, zp).layers.enable(1);
 
-        if(selected && dirid==seldir)
+        if(selected!==undefined && (selected & dir.mask))
         {
-          getmesh(walls[0], cell, cellid, dir, dirid);
+          getmesh(walls[0], cellid, dir, xp, yp, zp).layers.disable(1);
         }    
       }
 
-      let next = cell.n[dirid];
-      if (next>0) {
-        scan(next, energy, dirmask & dir.oppo);
+      const next = cell.n[dirid];
+      if (next!==undefined) {
+        const mov = dir.mov;
+        scan(next, energy, dirmask & dir.oppo, xp+mov[0], yp+mov[1], zp+mov[2]);
       }
     }
   });
@@ -153,10 +153,9 @@ function scan(cellid, energy, dirmask) {
 
 function rerender()
 {
-  let cell = world[cameracell];
-  camera.position.x = cell.p[0];
-  camera.position.y = cell.p[1];
-  camera.position.z = cell.p[2];
+  //camera.position.x = p[0];
+  //camera.position.y = p[1];
+  //camera.position.z = p[2];
   let dir = directions[cameradir];
   camera.rotation.x = dir.rotx;
   camera.rotation.y = dir.roty;
@@ -167,56 +166,101 @@ function rerender()
 function redraw()
 {
   meshindex=0; scanvalue++;
-
-  scan(cameracell, 10, directions[cameradir].oppo);
-  for(let i=meshindex;i<meshes.count;i++) 
+    
+  scan(cameracell, 10, directions[cameradir].oppo, 0, 0 ,0);
+  for(let i=meshindex;i<meshes.length;i++) 
   {
-    console.log('lessmeshes');
     meshes[i].visible = false;
+    meshes[i].layers.disable( 1 );
   }
+  //console.log(meshindex,meshes.length);
   
   rerender();
 }
 
-function push(cellid, dirid)
+function toCellId(p)
 {
-  const c = world[cellid];
-  if(c.n[dirid]==0)
+  return p.join(' ');
+}
+function toPosition(cellid)
+{
+  return cellid.split(' ').map(v=>Number(v));
+}
+
+
+function demolish(newid, newcell, cellid, cell, d)
+{
+  newcell.n[d.back] = cellid;
+  newcell.w[d.back] = undefined;
+  cell.n[d.front] = newid;
+  cell.w[d.front] = undefined; 
+}
+
+function neighborId(cellid, d)
+{
+  const mov = d.mov;
+  const p = toPosition(cellid);
+  p[0]+=mov[0];
+  p[1]+=mov[1];
+  p[2]+=mov[2];
+  return toCellId(p);
+}
+
+function demolishMany(cellid,cell, ...ddid)
+{
+  ddid.forEach((dirid)=> {
+    const d = directions[dirid];
+    const newid = neighborId(cellid,d);
+    const newcell = world[newid];
+    if(newcell!==undefined)
+    {
+      demolish(newid, newcell, cellid, cell, d);
+    }
+  });
+}
+
+function push(cellid, dirid, bulldoze = true)
+{
+  const cell = world[cellid];
+  if(cell.n[dirid]===undefined)
   {
     const d = directions[dirid];
-    const i = world.length;
-    const cell = {
-      p: [c.p[0]+d.mov[0], c.p[1]+d.mov[1], c.p[2]+d.mov[2]],
-      n: [0,0,0,0,0,0],
-      w: c.w.map((v,i)=>(v==0 && c.n[i]>0 ? (i+1) : v)),
+    const newid = neighborId(cellid, d);
+    let newcell = world[newid];
 
-       /*
-        c.w[0],
-        c.w[1],
-        c.w[2],
-        c.w[3],
-        c.w[4],
-        c.w[5],
-        c.w[0]?c.w[0]:1,
-        c.w[1]?c.w[1]:2,
-        c.w[2]?c.w[2]:3,
-        c.w[3]?c.w[3]:4,
-        c.w[4]?c.w[4]:5,
-        c.w[5]?c.w[5]:6
-        */
-      
-      s: c.s,
+    if(newcell===undefined)
+    {
+      newcell = {
+        n: [,,,,,],
+        w: cell.w.map((v,i)=>(v===undefined && cell.n[i]!==undefined ? (i+1) : v)),
+        s: cell.s,
+      }    
+      world[newid]=newcell;    
+    }
+  
+    demolish(newid,newcell,cellid,cell,d);
+
+    if(bulldoze)
+    {
+      demolishMany(newid,newcell,d.sx, d.dx, d.up, d.dw, d.front);
     }
 
-    cell.n[d.oppi] = cellid;
-    cell.w[d.oppi] = 0;
-
-    c.n[dirid] = i;
-    c.w[dirid] = 0;
-
-    world.push(cell);
+    //console.log('dirid',dirid);
+    //console.log(world);
   }
 }
+
+function movement(dirid)
+{
+  const cell = world[cameracell];
+  const next = cell.n[dirid];
+  if(next!==undefined)
+  {
+    cameracell = next;
+    redraw();
+  }
+}
+
 
 
 function keydown(e) {
@@ -226,12 +270,27 @@ function keydown(e) {
   switch(e.keyCode)
   {
     case 13: // ENTER
-    push(cameracell,cameradir);
+    case 32: // SPACE
+    if(selcells.size>0)
+    {
+      selcells.forEach((selmask,cellid)=>
+      {
+        directions.forEach((d,dirid)=>
+        {
+          if(selmask & d.mask) push(cellid,dirid)
+        });
+      });
+      selcells.clear();
+    }
+    else
+    {
+      // CREATE ALCOVE
+      push(cameracell,cameradir, false);
+    }
     redraw();
     break;
 
-    case 32: // SPACE
-    selcells.forEach((c)=>push(c,seldir));
+    case 8: // BACKSPACE
     selcells.clear();
     redraw();
     break;
@@ -250,14 +309,12 @@ function keydown(e) {
 
     case 38: // FORWARD
     case 'w':
-      cameradir = directions[cameradir].up;
-      redraw();
-    break;
+      movement(directions[cameradir].front);
+     break;
 
-    case 40: // DOWN
+    case 40: // BACKWARD
     case 's':
-      cameradir = directions[cameradir].dw;
-      redraw();
+      movement(directions[cameradir].back);
     break;
 
   }
@@ -265,32 +322,65 @@ function keydown(e) {
 function keyup(e) {
   keystate[e.keyCode] = false;
 }
-function clicked(e) {
-  
-  pointer.x = ( fov/90 * e.clientX / xres )  - 1;
-	pointer.y = 1 - ( fov/90 * e.clientY / yres ) ;
+
+let dragging;
+
+function selectCell(e) {
+
+  var rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ( ( e.clientX - rect.left ) / ( rect.right - rect.left ) ) * 2 - 1;
+  pointer.y = - ( ( e.clientY - rect.top ) / ( rect.bottom - rect.top) ) * 2 + 1;
   
   raycaster.setFromCamera( pointer, camera );
 	const intersects = raycaster.intersectObjects( scene.children, false );
   
   if(intersects.length>0)
   {
-    const data = intersects[0].object.userData;
-    console.log('data',data);
+    const o = intersects[0].object;
+    const data = o.userData;
+    //console.log('data',data);
+    const cellid = data.cellid;
+    const dirmask = data.dirmask;
+    let sel = selcells.get(cellid) || 0;
 
-    if(seldir!=data.dirid)
+    if(dragging!==undefined)
     {
-      selcells.clear();
+      //console.log('dragging',dragging,'dirmask',dirmask,'sel',sel & dirmask);
+      if(dragging[0]!=dirmask || dragging[1]==(sel & dirmask)) return;
     }
-    if(selcells.has(data.cellid)) selcells.delete(data.cellid);
-    else selcells.add(data.cellid);
-    seldir=data.dirid;
+
+    sel = sel ^ dirmask;
+    selcells.set(cellid, sel);
+    //console.log(selcells);
     redraw();
+    return [dirmask, sel & dirmask];
   }
-  
-  //console.log(e.buttons, e.clientX, e.clientY);
+  return;
 }
 
+
+function onmousemove(e)
+{
+  if(dragging!==undefined)
+  {
+    selectCell(e);
+  }
+}
+
+function onmousedown(e)
+{ 
+  if(e.button==0)
+  {
+    dragging = selectCell(e);
+  }
+}
+function onmouseup(e)
+{
+  if(e.button==0)
+  {
+    dragging = undefined;
+  }
+}
 
 
 
@@ -308,10 +398,11 @@ async function load() {
   }
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0, 0, 3);
+  scene.fog = new THREE.Fog(0, 0, 5);
   camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 1000);
   renderer = new THREE.WebGLRenderer({ canvas: canvas });
   raycaster = new THREE.Raycaster();
+  raycaster.layers.set( 1 );
 
 
   let up = await new THREE.TextureLoader().loadAsync( "data/up.png" );
@@ -325,10 +416,11 @@ async function load() {
     new THREE.MeshBasicMaterial({map: up, color: 0x00afaf }),
     new THREE.MeshBasicMaterial({map: up, color: 0xff00ff }),
     new THREE.MeshBasicMaterial({map: up, color: 0xaf00af }),
+    new THREE.MeshBasicMaterial({map: up, color: 0xc0c0c0 }),
    ];
 
   let geometries = [
-    new THREE.PlaneGeometry(1, 1, 4, 4).translate(0, 0, -0.49),
+    new THREE.PlaneGeometry(1, 1, 5, 5).translate(0, 0, -0.49),
     new THREE.PlaneGeometry(1, 1, 1, 1).translate(0, 0, -0.5)
   ];
 
@@ -340,6 +432,7 @@ async function load() {
     { material: materials[4], geometry: geometries[1] },
     { material: materials[5], geometry: geometries[1] },
     { material: materials[6], geometry: geometries[1] },
+    { material: materials[7], geometry: geometries[1] },
   ];
 
   redraw();
@@ -364,11 +457,11 @@ async function load() {
     jsons[v] = await res.json();
   });
 
-  //txt = TXT(gfx, jsons["gamefont.json"]);
-
   canvas.addEventListener("keydown", keydown);
   canvas.addEventListener("keyup", keyup);
-  canvas.addEventListener("click", clicked);
+  canvas.addEventListener("mousedown", onmousedown);
+  canvas.addEventListener("mouseup", onmouseup);
+  canvas.addEventListener("mousemove", onmousemove);
 
   init();
   //window.requestAnimationFrame(step);
