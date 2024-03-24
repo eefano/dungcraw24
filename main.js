@@ -65,7 +65,7 @@ const rHALF = Math.PI / 2.0;
 
 // TEH MASTERTABLE !!!
 
-let directions = [
+const directions = [
   {
     mov: [0, 0, +1],
     mask: 0b000001,
@@ -74,8 +74,8 @@ let directions = [
     back: 1,
     sx: 2,
     dx: 3,
-    up: 4,
-    dw: 5,
+    up: 5,
+    dw: 4,
     rotx: 0,
     roty: 0,
   },
@@ -87,8 +87,8 @@ let directions = [
     back: 0,
     sx: 3,
     dx: 2,
-    up: 4,
-    dw: 5,
+    up: 5,
+    dw: 4,
     rotx: 0,
     roty: Math.PI,
   },
@@ -100,8 +100,8 @@ let directions = [
     back: 3,
     sx: 1,
     dx: 0,
-    up: 4,
-    dw: 5,
+    up: 5,
+    dw: 4,
     rotx: 0,
     roty: +rHALF,
   },
@@ -113,8 +113,8 @@ let directions = [
     back: 2,
     sx: 0,
     dx: 1,
-    up: 4,
-    dw: 5,
+    up: 5,
+    dw: 4,
     rotx: 0,
     roty: -rHALF,
   },
@@ -126,8 +126,8 @@ let directions = [
     back: 5,
     sx: 0,
     dx: 1,
-    up: 3,
-    dw: 2,
+    up: 0,
+    dw: 4,
     rotx: -rHALF,
     roty: 0,
   },
@@ -139,8 +139,8 @@ let directions = [
     back: 4,
     sx: 1,
     dx: 0,
-    up: 2,
-    dw: 3,
+    up: 5,
+    dw: 0,
     rotx: +rHALF,
     roty: 0,
   },
@@ -160,6 +160,8 @@ let meshes = [],
   scanvalue = 0;
 
 let cameradir = 0,
+  camerarx = 0,
+  camerary = 0,
   cameracell = "0 0 0";
 
 let selcells = new Map();
@@ -233,9 +235,9 @@ function rerender() {
   //camera.position.x = p[0];
   //camera.position.y = p[1];
   //camera.position.z = p[2];
-  let dir = directions[cameradir];
-  //camera.rotation.x = dir.rotx;
-  camera.rotation.y = dir.roty;
+  camera.rotation.x = directions[camerarx].rotx;
+  camera.rotation.y = directions[camerary].roty;
+  camera.rotation.order = "YXZ";
 
   renderer.render(scene, camera);
 }
@@ -243,6 +245,8 @@ function rerender() {
 function redraw() {
   meshindex = 0;
   scanvalue++;
+
+  cameradir = camerarx == 0 ? camerary : camerarx;
 
   scan(cameracell, ViewDistance * 2, directions[cameradir].oppo, 0, 0, 0);
   for (let i = meshindex; i < meshes.length; i++) {
@@ -277,13 +281,14 @@ function neighborId(cellid, d) {
   return toCellId(p);
 }
 
-function demolishMany(cellid, cell, ...ddid) {
-  ddid.forEach((dirid) => {
-    const d = directions[dirid];
-    const newid = neighborId(cellid, d);
-    const newcell = world[newid];
-    if (newcell !== undefined) {
-      demolish(newid, newcell, cellid, cell, d);
+function demolishMany(cellid, cell, mask) {
+  directions.forEach((d) => {
+    if (d.mask & mask) {
+      const newid = neighborId(cellid, d);
+      const newcell = world[newid];
+      if (newcell !== undefined) {
+        demolish(newid, newcell, cellid, cell, d);
+      }
     }
   });
 }
@@ -305,10 +310,7 @@ function push(cellid, dirid, bulldoze = true) {
     }
 
     demolish(newid, newcell, cellid, cell, d);
-
-    if (bulldoze) {
-      demolishMany(newid, newcell, d.sx, d.dx, d.up, d.dw, d.front);
-    }
+    if (bulldoze) demolishMany(newid, newcell, d.oppo);
 
     //console.log('dirid',dirid);
     //console.log(world);
@@ -328,6 +330,7 @@ function keydown(e) {
   if (keystate[e.keyCode]) return;
   keystate[e.keyCode] = true;
   keytrigs.add(e.keyCode);
+  //console.log(e);
 
   switch (e.keyCode) {
     case 13: // ENTER
@@ -353,24 +356,26 @@ function keydown(e) {
 
     case 37: // LEFTARROW
     case 65: // A
-      if (e.shiftKey) {
-        cameradir = directions[cameradir].sx;
+      if (e.shiftKey) movement(directions[cameradir].sx);
+      else {
+        camerary = directions[camerary].sx;
         redraw();
-      } else movement(directions[cameradir].sx);
+      }
       break;
 
     case 39: // RIGHTARROW
     case 68: // D
-      if (e.shiftKey) {
-        cameradir = directions[cameradir].dx;
+      if (e.shiftKey) movement(directions[cameradir].dx);
+      else {
+        camerary = directions[camerary].dx;
         redraw();
-      } else movement(directions[cameradir].dx);
+      }
       break;
 
     case 38: // UPARROW
     case 87: // W
       if (e.shiftKey) {
-        camera.rotation.x = rHALF;
+        movement(directions[cameradir].up);
         redraw();
       } else movement(directions[cameradir].front);
       break;
@@ -393,19 +398,33 @@ function keydown(e) {
       }
     case 40: // DOWNARROW
       if (e.shiftKey) {
-        camera.rotation.x = -rHALF;
+        movement(directions[cameradir].dw);
         redraw();
       } else movement(directions[cameradir].back);
+      break;
+
+    case 33: // PAGE UP
+    case 82: // R
+      camerarx = directions[camerarx].up;
+      redraw();
+      break;
+
+    case 34: // PAGE DOWN
+    case 68: // D
+      camerarx = directions[camerarx].dw;
+      redraw();
       break;
   }
 }
 function keyup(e) {
   keystate[e.keyCode] = false;
   //console.log(e);
+  /*
   if (e.shiftKey && camera.rotation.x != 0) {
     camera.rotation.x = 0;
     redraw();
   }
+  */
 }
 
 let dragging;
