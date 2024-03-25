@@ -254,7 +254,7 @@ function redraw() {
 
   scan(cameracell, ViewDistance * 2, directions[cameradir].oppo, 0, 0, 0);
 
-  console.log(meshindex);
+  //console.log(meshindex);
 
   for (const index in meshindex) {
     const pool = meshpool[index];
@@ -449,7 +449,7 @@ function selectCell(e) {
   if (intersects.length > 0) {
     const o = intersects[0].object;
     const data = o.userData;
-    //console.log('data',data);
+    console.log('data',data);
     const cellid = data.cellid;
     const dirmask = data.dirmask;
     let sel = selcells.get(cellid) || 0;
@@ -506,9 +506,9 @@ async function load() {
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0, 0, ViewDistance);
 
-const light = new THREE.AmbientLight(); 
+  const light = new THREE.AmbientLight();
   scene.add(light);
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
   directionalLight.position.x = 0;
   directionalLight.position.y = 1;
   directionalLight.position.z = 1;
@@ -520,19 +520,47 @@ const light = new THREE.AmbientLight();
   raycaster.layers.set(1);
 
   const loader = new GLTFLoader();
- 
-  for (let n of ["wall.glb"]) {
-    const model = await loader.loadAsync("data/" + n);
-    const group = model.scene.children[0];
 
+  for (let n of ["wall", "floor", "arch","door"]) {
+    const model = await loader.loadAsync("data/" + n + ".glb");
+    models[n] = model.scene;
+    //console.log(model.scene);
+  }
+
+  {
+    const group = models["wall"].children[0];
     group.scale.x = 0.5;
     group.scale.y = 0.5;
+    group.scale.z = 0.25;
+    group.position.z = -0.5;
+  }
+  {
+    const group = models["floor"].children[0];
+    group.rotation.x = rHALF;
+    group.scale.x = 0.5;
+    group.scale.y = 1/8;
     group.scale.z = 0.5;
     group.position.z = -0.5;
-    models[n] = model.scene;
-    console.log(model.scene);
   }
-  
+  {
+    const group = models["arch"].children[0];
+    //group.rotation.x = rHALF;
+    group.scale.x = 0.25;
+    group.scale.y = 0.25;
+    group.scale.z = 0.15;
+    group.position.z = -0.5;
+    group.position.y = -0.5;
+  }
+  {
+    const group = models["door"].children[0];
+    //group.rotation.x = rHALF;
+    group.scale.x = 0.25;
+    group.scale.y = 0.25;
+    group.scale.z = 0.15;
+    group.position.z = -0.5;
+    group.position.y = -0.5;
+  }
+
   let up = await new THREE.TextureLoader().loadAsync("data/up.png");
   // checkertexture(128, 128, 0xffff00);
 
@@ -558,13 +586,15 @@ const light = new THREE.AmbientLight();
 
   walls = [
     new THREE.Mesh(geometries[0], materials[0]),
-    models["wall.glb"],
-
+    models["wall"],
     //new THREE.Mesh(geometries[1], materials[1]),
     new THREE.Mesh(geometries[1], materials[2]),
-    new THREE.Mesh(geometries[1], materials[3]),
-    new THREE.Mesh(geometries[1], materials[4]),
-    new THREE.Mesh(geometries[1], materials[5]),
+    models["arch"],
+    models["door"],
+    //new THREE.Mesh(geometries[1], materials[3]),
+    //new THREE.Mesh(geometries[1], materials[4]),
+    models["floor"],
+    //new THREE.Mesh(geometries[1], materials[5]),
     new THREE.Mesh(geometries[1], materials[6]),
     new THREE.Mesh(geometries[1], materials[7]),
   ];
