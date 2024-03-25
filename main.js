@@ -509,8 +509,8 @@ async function load() {
 const light = new THREE.AmbientLight(); 
   scene.add(light);
   const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-  directionalLight.position.x = 1;
-  directionalLight.position.y = 0;
+  directionalLight.position.x = 0;
+  directionalLight.position.y = 1;
   directionalLight.position.z = 1;
   scene.add(directionalLight);
 
@@ -522,8 +522,15 @@ const light = new THREE.AmbientLight();
   const loader = new GLTFLoader();
  
   for (let n of ["wall.glb"]) {
-    models[n] = await loader.loadAsync("data/" + n);
-    //console.log(models[n]);
+    const model = await loader.loadAsync("data/" + n);
+    const group = model.scene.children[0];
+
+    group.scale.x = 0.5;
+    group.scale.y = 0.5;
+    group.scale.z = 0.5;
+    group.position.z = -0.5;
+    models[n] = model.scene;
+    console.log(model.scene);
   }
   
   let up = await new THREE.TextureLoader().loadAsync("data/up.png");
@@ -551,7 +558,7 @@ const light = new THREE.AmbientLight();
 
   walls = [
     new THREE.Mesh(geometries[0], materials[0]),
-    models["wall.glb"].scene,
+    models["wall.glb"],
 
     //new THREE.Mesh(geometries[1], materials[1]),
     new THREE.Mesh(geometries[1], materials[2]),
