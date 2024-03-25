@@ -375,9 +375,9 @@ function keydown(e) {
     case 38: // UPARROW
     case 87: // W
       if (e.shiftKey) {
-        movement(directions[cameradir].up);
+        movement(directions[camerary].up);
         redraw();
-      } else movement(directions[cameradir].front);
+      } else movement(directions[camerary].front);
       break;
 
     case 83: // S
@@ -398,9 +398,9 @@ function keydown(e) {
       }
     case 40: // DOWNARROW
       if (e.shiftKey) {
-        movement(directions[cameradir].dw);
+        movement(directions[camerary].dw);
         redraw();
-      } else movement(directions[cameradir].back);
+      } else movement(directions[camerary].back);
       break;
 
     case 33: // PAGE UP
@@ -448,6 +448,11 @@ function selectCell(e) {
     if (dragging !== undefined) {
       //console.log('dragging',dragging,'dirmask',dirmask,'sel',sel & dirmask);
       if (dragging[0] != dirmask || dragging[1] == (sel & dirmask)) return;
+    } else {
+      if (!e.ctrlKey) {
+        selcells.clear();
+        sel = 0;
+      }
     }
 
     sel = sel ^ dirmask;
