@@ -1,4 +1,5 @@
 import WebGL from "three/addons/capabilities/WebGL.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
 
 var xres, yres, canvas, gfx, txt;
@@ -6,6 +7,7 @@ var keystate = [];
 var keytrigs = new Set();
 
 var jsons = {};
+var models = {};
 
 const ViewDistance = 5;
 
@@ -155,8 +157,8 @@ const fov = 109.15;
 
 const pointer = new THREE.Vector2();
 
-let meshes = [],
-  meshindex = 0,
+let meshpool = [],
+  meshindex = [],
   scanvalue = 0;
 
 let cameradir = 0,
@@ -166,19 +168,24 @@ let cameradir = 0,
 
 let selcells = new Map();
 
-function getmesh(wall, cellid, dir, xp, yp, zp) {
+function getmesh(wallindex, cellid, dir, xp, yp, zp) {
+  let pool = meshpool[wallindex];
+  if (pool === undefined) {
+    pool = [];
+    meshpool[wallindex] = pool;
+  }
+  let index = meshindex[wallindex] || 0;
   let mesh;
-  if (meshindex == meshes.length) {
-    mesh = new THREE.Mesh(wall.geometry, wall.material);
+
+  if (index == pool.length) {
+    mesh = walls[wallindex].clone();
     mesh.userData = { cellid, dirmask: dir.mask };
-    meshes.push(mesh);
+    pool.push(mesh);
     scene.add(mesh);
   } else {
-    mesh = meshes[meshindex];
+    mesh = pool[index];
     mesh.userData.cellid = cellid;
     mesh.userData.dirmask = dir.mask;
-    mesh.geometry = wall.geometry;
-    mesh.material = wall.material;
     mesh.visible = true;
   }
   mesh.rotation.x = dir.rotx;
@@ -187,7 +194,7 @@ function getmesh(wall, cellid, dir, xp, yp, zp) {
   mesh.position.y = -yp;
   mesh.position.z = -zp;
 
-  meshindex++;
+  meshindex[wallindex] = index + 1;
   return mesh;
 }
 
@@ -206,12 +213,10 @@ function scan(cellid, energy, dirmask, xp, yp, zp) {
       let wallindex = cell.w[dirid];
       if (wallindex != 0) {
         //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex);
-        let wall = walls[wallindex];
-
-        getmesh(wall, cellid, dir, xp, yp, zp).layers.enable(1);
+        getmesh(wallindex, cellid, dir, xp, yp, zp).layers.enable(1);
 
         if (selected !== undefined && selected & dir.mask) {
-          getmesh(walls[0], cellid, dir, xp, yp, zp).layers.disable(1);
+          getmesh(0, cellid, dir, xp, yp, zp).layers.disable(1);
         }
       }
 
@@ -243,18 +248,22 @@ function rerender() {
 }
 
 function redraw() {
-  meshindex = 0;
   scanvalue++;
 
   cameradir = camerarx == 0 ? camerary : camerarx;
 
   scan(cameracell, ViewDistance * 2, directions[cameradir].oppo, 0, 0, 0);
-  for (let i = meshindex; i < meshes.length; i++) {
-    meshes[i].visible = false;
-    meshes[i].layers.disable(1);
-  }
-  //console.log(meshindex,meshes.length);
 
+  console.log(meshindex);
+
+  for (const index in meshindex) {
+    const pool = meshpool[index];
+    for (let i = meshindex[index]; i < pool.length; i++) {
+      pool[i].visible = false;
+      pool[i].layers.disable(1);
+    }
+    meshindex[index] = 0;
+  }
   rerender();
 }
 
@@ -496,11 +505,27 @@ async function load() {
 
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0, 0, ViewDistance);
+
+const light = new THREE.AmbientLight(); 
+  scene.add(light);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+  directionalLight.position.x = 1;
+  directionalLight.position.y = 0;
+  directionalLight.position.z = 1;
+  scene.add(directionalLight);
+
   camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 1000);
   renderer = new THREE.WebGLRenderer({ canvas: canvas });
   raycaster = new THREE.Raycaster();
   raycaster.layers.set(1);
 
+  const loader = new GLTFLoader();
+ 
+  for (let n of ["wall.glb"]) {
+    models[n] = await loader.loadAsync("data/" + n);
+    //console.log(models[n]);
+  }
+  
   let up = await new THREE.TextureLoader().loadAsync("data/up.png");
   // checkertexture(128, 128, 0xffff00);
 
@@ -525,14 +550,16 @@ async function load() {
   ];
 
   walls = [
-    { material: materials[0], geometry: geometries[0] },
-    { material: materials[1], geometry: geometries[1] },
-    { material: materials[2], geometry: geometries[1] },
-    { material: materials[3], geometry: geometries[1] },
-    { material: materials[4], geometry: geometries[1] },
-    { material: materials[5], geometry: geometries[1] },
-    { material: materials[6], geometry: geometries[1] },
-    { material: materials[7], geometry: geometries[1] },
+    new THREE.Mesh(geometries[0], materials[0]),
+    models["wall.glb"].scene,
+
+    //new THREE.Mesh(geometries[1], materials[1]),
+    new THREE.Mesh(geometries[1], materials[2]),
+    new THREE.Mesh(geometries[1], materials[3]),
+    new THREE.Mesh(geometries[1], materials[4]),
+    new THREE.Mesh(geometries[1], materials[5]),
+    new THREE.Mesh(geometries[1], materials[6]),
+    new THREE.Mesh(geometries[1], materials[7]),
   ];
 
   preload("image", ".png", (v, href) => {
