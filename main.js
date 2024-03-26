@@ -1,6 +1,7 @@
 import WebGL from "three/addons/capabilities/WebGL.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
+import { TXT } from "./txt.js";
 
 var xres, yres, canvas, gfx, txt;
 var keystate = [];
@@ -8,6 +9,7 @@ var keytrigs = new Set();
 
 var jsons = {};
 var models = {};
+var textures = {};
 
 const ViewDistance = 5;
 
@@ -516,6 +518,7 @@ async function load() {
 
   camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 1000);
   renderer = new THREE.WebGLRenderer({ canvas: canvas });
+  renderer.setViewport((xres - yres) / 2, 0, yres, yres);
   raycaster = new THREE.Raycaster();
   raycaster.layers.set(1);
 
@@ -562,6 +565,7 @@ async function load() {
   }
 
   let up = await new THREE.TextureLoader().loadAsync("data/up.png");
+  let fontex = await new THREE.TextureLoader().loadAsync("data/gamefonto.png");
   // checkertexture(128, 128, 0xffff00);
 
   let materials = [
@@ -618,6 +622,13 @@ async function load() {
     if (!res.ok) return;
     jsons[v] = await res.json();
   });
+
+  const txt = TXT(fontex, jsons["gamefont.json"], 64);
+  const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
+  test.scale.x = 1/64;
+  test.scale.y = 1/64;
+  test.position.z -= 0.5;
+  scene.add(test);
 
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
