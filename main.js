@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import { TXT } from "./txt.js";
 
-var xres, yres, canvas, gfx, txt;
+var xres, yres, canvas, txt;
 var keystate = [];
 var keytrigs = new Set();
 
@@ -159,8 +159,8 @@ const fov = 109.15;
 
 const pointer = new THREE.Vector2();
 
-let meshpool = [],
-  meshindex = [],
+let meshpool = {},
+  meshindex = {},
   scanvalue = 0;
 
 let cameradir = 0,
@@ -213,9 +213,13 @@ function scan(cellid, energy, dirmask, xp, yp, zp) {
   directions.forEach((dir, dirid) => {
     if (dirmask & dir.mask) {
       let wallindex = cell.w[dirid];
-      if (wallindex != 0) {
+      if (dirid==4 && wallindex != 0) {
         //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex);
         getmesh(wallindex, cellid, dir, xp, yp, zp).layers.enable(1);
+        const test = getmesh('number'+energy,cellid,dir,xp,yp,zp); 
+        test.position.y=-0.49;
+        test.scale.x = 1/16;
+        test.scale.y = 1/16;
 
         if (selected !== undefined && selected & dir.mask) {
           getmesh(0, cellid, dir, xp, yp, zp).layers.disable(1);
@@ -239,12 +243,12 @@ function scan(cellid, energy, dirmask, xp, yp, zp) {
 }
 
 function rerender() {
-  //camera.position.x = p[0];
-  //camera.position.y = p[1];
-  //camera.position.z = p[2];
-  camera.rotation.x = directions[camerarx].rotx;
-  camera.rotation.y = directions[camerary].roty;
-  camera.rotation.order = "YXZ";
+  //camera.rotation.x = directions[camerarx].rotx;
+  //camera.rotation.y = directions[camerary].roty;
+  //camera.rotation.order = "YXZ";
+ 
+  camera.rotation.x = -rHALF;
+  camera.position.y = 3;
 
   renderer.render(scene, camera);
 }
@@ -256,7 +260,8 @@ function redraw() {
 
   scan(cameracell, ViewDistance * 2, directions[cameradir].oppo, 0, 0, 0);
 
-  //console.log(meshindex);
+  console.log(meshpool);
+  console.log(meshindex);
 
   for (const index in meshindex) {
     const pool = meshpool[index];
@@ -506,7 +511,7 @@ async function load() {
   }
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0, 0, ViewDistance);
+  //scene.fog = new THREE.Fog(0, 0, ViewDistance);
 
   const light = new THREE.AmbientLight();
   scene.add(light);
@@ -588,21 +593,6 @@ async function load() {
     new THREE.PlaneGeometry(1, 1, 1, 1).translate(0, 0, -0.5),
   ];
 
-  walls = [
-    new THREE.Mesh(geometries[0], materials[0]),
-    models["wall"],
-    //new THREE.Mesh(geometries[1], materials[1]),
-    new THREE.Mesh(geometries[1], materials[2]),
-    models["arch"],
-    models["door"],
-    //new THREE.Mesh(geometries[1], materials[3]),
-    //new THREE.Mesh(geometries[1], materials[4]),
-    models["floor"],
-    //new THREE.Mesh(geometries[1], materials[5]),
-    new THREE.Mesh(geometries[1], materials[6]),
-    new THREE.Mesh(geometries[1], materials[7]),
-  ];
-
   preload("image", ".png", (v, href) => {
     let i = new Image();
     i.onload = () => {
@@ -623,12 +613,40 @@ async function load() {
     jsons[v] = await res.json();
   });
 
-  const txt = TXT(fontex, jsons["gamefont.json"], 64);
-  const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
+  txt = TXT(fontex, jsons["gamefont.json"], 64);
+  const test = txt.toMesh("Testing123", 0, 0, 0xffff00);//.rotateX(-rHALF);
   test.scale.x = 1/64;
   test.scale.y = 1/64;
-  test.position.z -= 0.5;
+  test.rotation.x = -rHALF;
+  test.position.y -= 0.49;
+  //test.position.z = -1;
   scene.add(test);
+
+  walls = {
+    0: new THREE.Mesh(geometries[0], materials[0]),
+    //models["wall"],
+    1: new THREE.Mesh(geometries[1], materials[1]),
+    2: new THREE.Mesh(geometries[1], materials[2]),
+    //models["arch"],
+    //models["door"],
+    3: new THREE.Mesh(geometries[1], materials[3]),
+    4: new THREE.Mesh(geometries[1], materials[4]),
+    //models["floor"],
+    5: new THREE.Mesh(geometries[1], materials[5]),
+    6: new THREE.Mesh(geometries[1], materials[6]),
+    7: new THREE.Mesh(geometries[1], materials[7]),
+    'number0' : txt.toMesh("0", 0, 0, 0x666600),
+    'number1' : txt.toMesh("1", 0, 0, 0x777700),
+    'number2' : txt.toMesh("2", 0, 0, 0x888800),
+    'number3' : txt.toMesh("3", 0, 0, 0x999900),
+    'number4' : txt.toMesh("4", 0, 0, 0xaaaa00),
+    'number5' : txt.toMesh("5", 0, 0, 0xbbbb00),
+    'number6' : txt.toMesh("6", 0, 0, 0xcccc00),
+    'number7' : txt.toMesh("7", 0, 0, 0xdddd00),
+    'number8' : txt.toMesh("8", 0, 0, 0xeeee00),
+    'number9' : txt.toMesh("9", 0, 0, 0xffff00),
+  };
+
 
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
