@@ -4,9 +4,6 @@ function TXT(map, font, scale) {
   const indices = [0, 2, 1, 0, 3, 2];
   const materials = {};
 
-  map.minFilter = THREE.NearestFilter;
-  map.magFilter = THREE.NearestFilter;
-
   font.glyphs.forEach((g) => {
     const geometry = new THREE.BufferGeometry();
 
