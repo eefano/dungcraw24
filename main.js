@@ -10,7 +10,7 @@ var keytrigs = new Set();
 var jsons = {};
 var models = {};
 var textures = {};
-var birdeye = false;
+var birdeye = true;
 
 const ViewDistance = 9;
 
@@ -221,10 +221,10 @@ function scan(cellid, energy, dirmask, xp, yp, zp) {
     if (dirmask & dir.mask) {
       let wallindex = cell.w[dirid];
       if (wallindex != 0) {
-        //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex);
+        //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex, 'walls',walls[wallindex]);
         getmesh(wallindex, cellid, dir, xp, yp, zp).layers.enable(1);
 
-        if (dirid == 4 && birdeye) {
+        if (dirid == 4 && birdeye && energy < 10) {
           const test = getmesh("number" + energy, cellid, dir, xp, yp, zp);
           test.position.y = -0.49;
           test.scale.x = 1 / 16;
@@ -252,12 +252,95 @@ function scan(cellid, energy, dirmask, xp, yp, zp) {
   });
 }
 
-let playerpos;
+function scan_frustum(cellid, energy, sxdx, updw, maindir, xp, yp, zp) {
+  if (energy <= 0) return;
+  let cell = world[cellid];
+  const selected = selcells.get(cellid);
+
+  console.log(
+    "cell",
+    cellid,
+    "energy",
+    energy,
+    "sxdx",
+    sxdx,
+    "updw",
+    updw,
+    "xp",
+    xp,
+    "yp",
+    yp,
+    "zp",
+    zp
+  );
+
+  for (let dirid = 0; dirid < directions.length; dirid++) {
+    if (dirid == maindir.back) continue;
+    const dir = directions[dirid];
+
+    if (cell.scanvalue != scanvalue) {
+      let wallindex = cell.w[dirid];
+      if (wallindex != 0) {
+        //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex, 'walls',walls[wallindex]);
+        getmesh(wallindex, cellid, dir, xp, yp, zp).layers.enable(1);
+
+        if (dirid == 4 && birdeye && energy < 10) {
+          const test = getmesh("number" + energy, cellid, dir, xp, yp, zp);
+          test.position.y = -0.49;
+          test.scale.x = 1 / 16;
+          test.scale.y = 1 / 16;
+        }
+
+        if (selected !== undefined && selected & dir.mask) {
+          getmesh(0, cellid, dir, xp, yp, zp).layers.disable(1);
+        }
+      }
+    }
+    
+    let nextsxdx = sxdx,
+      nextupdw = updw;
+
+    if (dirid == maindir.sx || dirid == maindir.dx) {
+      if (sxdx) continue;
+      else nextsxdx = true;
+    }
+    if (dirid == maindir.up || dirid == maindir.dw) {
+      if (updw) continue;
+      else nextupdw = true;
+    }
+    if (dirid == maindir.front) {
+      nextupdw = false;
+      nextsxdx = false;
+    }
+
+    const next = cell.n[dirid];
+    if (next != 0) {
+      const mov = dir.mov;
+      scan_frustum(
+        next,
+        energy-1,
+        nextsxdx,
+        nextupdw,
+        maindir,
+        xp + mov[0],
+        yp + mov[1],
+        zp + mov[2]
+      );
+    }
+  }
+  cell.scanvalue = scanvalue;
+}
+
+let playerpos, county;
 
 function scan_arc(distance, min, max, rotate) {
   if (distance > ViewDistance || min >= max) return;
-  console.log('distance',distance,'min',min,'max',max);
-  for (var i = Math.round(distance * min); i <= Math.round(distance * max); i++) {
+  console.log("distance", distance, "min", min, "max", max);
+  for (
+    var i = Math.round(distance * min);
+    i <= Math.round(distance * max);
+    i++
+  ) {
     const r = rotate(distance, 0, i);
     const p = playerpos.map((v, j) => v + r[j]);
 
@@ -281,9 +364,9 @@ function scan_arc(distance, min, max, rotate) {
             //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex);
             getmesh(wallindex, cellid, dir, p[0], p[1], p[2]).layers.enable(1);
 
-            if (dirid == 4 && birdeye) {
+            if (dirid == 4 && birdeye && county < 10) {
               const test = getmesh(
-                "number" + distance,
+                "number" + county++,
                 cellid,
                 dir,
                 p[0],
@@ -312,7 +395,7 @@ function rerender() {
   if (birdeye) {
     camera.rotation.x = -rHALF;
     //camera.rotation.y = 0;
-    camera.position.y = 6;
+    camera.position.y = 4;
     scene.fog.far = 1000;
   } else {
     camera.rotation.x = directions[camerarx].rotx;
@@ -336,12 +419,25 @@ function redraw() {
   const startmask = directions[cameradir].oppo; /* 0b111111 per audio scan */
 
   //scan(cameracell, ViewDistance * 2, startmask, 0, 0, 0);
+  scan_frustum(
+    cameracell,
+    ViewDistance,
+    false,
+    false,
+    directions[cameradir],
+    0,
+    0,
+    0
+  );
 
   playerpos = toPosition(cameracell);
+  county = 0;
 
+  /*
   directions.forEach((dir, dirid) => {
-    if (dirid <4) scan_arc(0, -1, 1, dir.rotate);
+    if (dirid ==0) scan_arc(0, -1.1, 1.1, dir.rotate);
   });
+  */
 
   //console.log(meshpool);
   //console.log(meshindex);
