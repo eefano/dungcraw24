@@ -19,5 +19,7 @@ Controls (work in progress)
 - F/PAGE DOWN: look down
 - X : put a mirror on the wall you're facing
 - M : toggle bird-eye view
+- Numpad 1-9 : place an object on the selected wall
+- Delete : delete selected object
 
 

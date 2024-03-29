@@ -12,7 +12,7 @@ var models = {};
 var textures = {};
 var birdeye = false;
 
-const ViewDistance = 5;
+const ViewDistance = 6;
 
 function step() {
   window.requestAnimationFrame(step);
@@ -66,14 +66,14 @@ function checkertexture(width, height, c) {
 
 const rHALF = Math.PI / 2.0;
 
-// [ front, back, left, right, up, down]
-
 // TEH MASTERTABLE !!!
 
 const directions = [
   {
     // N
     mov: [0, 0, +1],
+    movsxdx: [-1, 0, 0],
+    movupdw: [0, -1, 0],
     mirr: [1, 1, -1],
     mask: 0b000001,
     oppo: 0b111101,
@@ -89,6 +89,8 @@ const directions = [
   {
     // S
     mov: [0, 0, -1],
+    movsxdx: [1, 0, 0],
+    movupdw: [0, -1, 0],
     mirr: [1, 1, -1],
     mask: 0b000010,
     oppo: 0b111110,
@@ -104,6 +106,8 @@ const directions = [
   {
     // W
     mov: [+1, 0, 0],
+    movsxdx: [0, 0, 1],
+    movupdw: [0, -1, 0],
     mirr: [-1, 1, 1],
     mask: 0b000100,
     oppo: 0b110111,
@@ -119,6 +123,8 @@ const directions = [
   {
     // E
     mov: [-1, 0, 0],
+    movsxdx: [0, 0, -1],
+    movupdw: [0, -1, 0],
     mirr: [-1, 1, 1],
     mask: 0b001000,
     oppo: 0b111011,
@@ -132,8 +138,10 @@ const directions = [
     roty: -rHALF,
   },
   {
-    // UP
+    // DW
     mov: [0, +1, 0],
+    movsxdx: [-1, 0, 0],
+    movupdw: [0, 0, 1],
     mirr: [1, -1, 1],
     mask: 0b010000,
     oppo: 0b011111,
@@ -147,8 +155,10 @@ const directions = [
     roty: 0,
   },
   {
-    // DW
+    // UP
     mov: [0, -1, 0],
+    movsxdx: [-1, 0, 0],
+    movupdw: [0, 0, -1],
     mirr: [1, -1, 1],
     mask: 0b100000,
     oppo: 0b101111,
@@ -183,8 +193,9 @@ let cameradir = 0,
   cameracell = "0 0 0";
 
 let selcells = new Map();
+let selobjs = new Map();
 
-function getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, offset) {
+function getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, offset, osxdx = 0, oupdw = 0) {
   let pool = meshpool[wallindex];
   if (pool === undefined) {
     pool = [];
@@ -195,20 +206,18 @@ function getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, offset) {
 
   if (index == pool.length) {
     mesh = walls[wallindex].clone();
-    mesh.userData = { cellid, dirmask: dir.mask };
+    //mesh.userData = {};
     pool.push(mesh);
     scene.add(mesh);
   } else {
     mesh = pool[index];
-    mesh.userData.cellid = cellid;
-    mesh.userData.dirmask = dir.mask;
     mesh.visible = true;
   }
   mesh.rotation.x = mz * my * dir.rotx;
   mesh.rotation.y = mz * mx * dir.roty;
-  mesh.position.x = -xp - offset * dir.mov[0] * mx;
-  mesh.position.y = -yp - offset * dir.mov[1] * my;
-  mesh.position.z = -zp - offset * dir.mov[2] * mz;
+  mesh.position.x = -xp - (offset * dir.mov[0] + osxdx * dir.movsxdx[0] + oupdw * dir.movupdw[0]) * mx;
+  mesh.position.y = -yp - (offset * dir.mov[1] + osxdx * dir.movsxdx[1] + oupdw * dir.movupdw[1]) * my;
+  mesh.position.z = -zp - (offset * dir.mov[2] + osxdx * dir.movsxdx[2] + oupdw * dir.movupdw[2]) * mz;
   mesh.scale.x = mx;
   mesh.scale.y = my;
   mesh.scale.z = mz;
@@ -218,7 +227,22 @@ function getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, offset) {
 }
 
 const ViewDistanceSquared = ViewDistance * ViewDistance;
-let space = {};
+const space = {};
+const spread = 0.38;
+const objsize = 0.15;
+
+const slots = [
+  0,
+  [-spread, -spread],
+  [0, -spread],
+  [spread, -spread],
+  [-spread, 0],
+  [0, 0],
+  [spread, 0],
+  [-spread, spread],
+  [0, spread],
+  [spread, spread],
+];
 
 function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
   const posid = toCellId(xp, yp, zp);
@@ -232,12 +256,19 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
 
   //console.log('cell',cellid, 'dirmask', dirmask.toString(2), 'level', level);
 
+  let deferred = [];
+
   directions.forEach((dir, dirid) => {
     if (dirmask & dir.mask) {
+      // RENDER WALL
       let wallindex = cell.w[dirid];
       if (wallindex != 0) {
         //console.log('dirid', dirid, 'wall', wallindex, 'level', level,'frame',frame,'sv',sv);
-        getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, 0.5).layers.enable(1);
+        const mesh = getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, 0.5);
+        mesh.layers.enable(1);
+        mesh.userData.type = 0;
+        mesh.userData.cellid = cellid;
+        mesh.userData.dirmask = dir.mask;
 
         /*
         if (level > 0) {
@@ -249,33 +280,77 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
         */
 
         if (selected !== undefined && selected & dir.mask) {
-          getmesh(0, cellid, dir, xp, yp, zp, mx, my, mz, 0.49).layers.disable(1);
+          const mesh = getmesh("_" + wallindex, cellid, dir, xp, yp, zp, mx, my, mz, 0.49);
+          mesh.layers.disable(1);
+          mesh.scale.x *= 0.9;
+          mesh.scale.y *= 0.9;
+          mesh.scale.z *= 0.9;
+        }
+      }
+      // RENDER OBJECTS ANCHORED TO WALL
+      const cello = cell.o;
+      if (cello !== undefined) {
+        const objs = cello[dirid];
+        for (const slotid in objs) {
+          const obj = objs[slotid];
+          if (obj !== undefined) {
+            const slot = slots[slotid];
+            const mesh = getmesh(obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
+            mesh.layers.enable(1);
+            const userData = mesh.userData;
+            userData.type = 1;
+            userData.cellid = cellid;
+            userData.dirid = dirid;
+            userData.slotid = slotid;
+            userData.objid = cellid + " " + dirid + " " + slotid;
+
+            if (selobjs.has(userData.objid)) {
+              const mesh = getmesh("_" + obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
+              mesh.scale.x *= 1.1;
+              mesh.scale.y *= 1.1;
+              mesh.scale.z *= 1.1;
+              mesh.layers.disable(1);
+            }
+          }
         }
       }
 
-      let nextcell,
-        nextmask,
-        nextmx = mx,
-        nextmy = my,
-        nextmz = mz;
-
       if (wallindex == "mirror") {
-        nextcell = cellid;
-        const back = directions[dir.back];
-        nextmask = (dirmask & back.oppo) | back.mask;
-        nextmx *= dir.mirr[0];
-        nextmy *= dir.mirr[1];
-        nextmz *= dir.mirr[2];
+        deferred.push(dirid);
       } else {
-        nextcell = cell.n[dirid];
-        nextmask = dirmask & dir.oppo; // dir.oppo solo per audio scan
-      }
-
-      if (nextcell != 0) {
-        const mov = dir.mov;
-        scan(nextcell, nextmask, xp + mov[0] * mx, yp + mov[1] * my, zp + mov[2] * mz, nextmx, nextmy, nextmz);
+        let nextcell = cell.n[dirid];
+        if (nextcell != 0) {
+          const mov = dir.mov;
+          scan(
+            nextcell,
+            dirmask & dir.oppo, // dir.oppo solo per audio scan
+            xp + mov[0] * mx,
+            yp + mov[1] * my,
+            zp + mov[2] * mz,
+            mx,
+            my,
+            mz
+          );
+        }
       }
     }
+  });
+
+  // Second Pass : Special Portals (mirrors)
+  deferred.forEach((dirid) => {
+    const dir = directions[dirid];
+    const back = directions[dir.back];
+    const mov = dir.mov;
+    scan(
+      cellid,
+      (dirmask & back.oppo) | back.mask,
+      xp + mov[0] * mx,
+      yp + mov[1] * my,
+      zp + mov[2] * mz,
+      mx * dir.mirr[0],
+      my * dir.mirr[1],
+      mz * dir.mirr[2]
+    );
   });
 }
 
@@ -291,7 +366,7 @@ function rerender() {
     camera.position.y = 0;
     camera.position.x = 0;
     camera.position.z = 0;
-    scene.fog.far = ViewDistance;
+    scene.fog.far = ViewDistance - 1;
   }
   camera.rotation.y = directions[camerary].roty;
   camera.rotation.order = "YXZ";
@@ -369,6 +444,25 @@ function paint(cellid, dirid, wallid) {
   }
 }
 
+//let nextObjId = 0;
+
+function spawn(cellid, dirid, slotid, wallid) {
+  const cell = world[cellid];
+  if (cell.n[dirid] == 0) {
+    let cello = cell.o;
+    if (cello === undefined) {
+      cello = [{}, {}, {}, {}, {}, {}];
+      cell.o = cello;
+    }
+    const objects = cello[dirid];
+    //const id = nextObjId++;
+    objects[slotid] = {
+      w: wallid,
+    };
+    //console.log(cell);
+  }
+}
+
 function push(cellid, dirid, bulldoze = true) {
   const cell = world[cellid];
   if (cell.n[dirid] == 0) {
@@ -414,6 +508,15 @@ function selOp(func) {
   }
 }
 
+function selOpObj(func) {
+  if (selobjs.size > 0) {
+    selobjs.forEach((data, objid) => {
+      func(data, objid);
+    });
+    selobjs.clear();
+  }
+}
+
 function keydown(e) {
   if (keystate[e.keyCode]) return;
   keystate[e.keyCode] = true;
@@ -429,6 +532,7 @@ function keydown(e) {
 
     case 8: // BACKSPACE
       selcells.clear();
+      selobjs.clear();
       redraw();
       break;
 
@@ -463,7 +567,7 @@ function keydown(e) {
         e.preventDefault();
         var dataStr =
           "data:text/json;charset=utf-8," +
-          encodeURIComponent(JSON.stringify(world, (key, value) => (key === "frame" ? undefined : value)));
+          encodeURIComponent(JSON.stringify(world, (key, value) => (key === "scanvalue" ? undefined : value)));
         var dlAnchorElem = document.getElementById("downloadAnchorElem");
         dlAnchorElem.setAttribute("href", dataStr);
         dlAnchorElem.setAttribute("download", "world.json");
@@ -499,8 +603,25 @@ function keydown(e) {
       redraw();
       break;
 
+    case 97: // numpad 1
+    case 98: // numpad 2
+    case 99: // numpad 3
+    case 100: // numpad 4
     case 101: // numpad 5
-      selOp((cellid, dirid) => {});
+    case 102: // numpad 6
+    case 103: // numpad 7
+    case 104: // numpad 8
+    case 105: // numpad 9
+      selOp((cellid, dirid) => {
+        spawn(cellid, dirid, e.keyCode - 96, "cube");
+      });
+      redraw();
+      break;
+
+    case 46: // Delete
+      selOpObj((data, objid) => {
+        world[data.cellid].o[data.dirid][data.slotid] = undefined;
+      });
       redraw();
       break;
   }
@@ -530,25 +651,37 @@ function selectCell(e) {
     const o = intersects[0].object;
     const data = o.userData;
     //console.log("data", data);
-    const cellid = data.cellid;
-    const dirmask = data.dirmask;
-    let sel = selcells.get(cellid) || 0;
 
-    if (dragging !== undefined) {
-      //console.log('dragging',dragging,'dirmask',dirmask,'sel',sel & dirmask);
-      if (dragging[0] != dirmask || dragging[1] == (sel & dirmask)) return;
-    } else {
-      if (!e.ctrlKey) {
-        selcells.clear();
-        sel = 0;
+    if (data.type == 0) {
+      // WALL
+      selobjs.clear();
+
+      const cellid = data.cellid;
+      const dirmask = data.dirmask;
+      let sel = selcells.get(cellid) || 0;
+
+      if (dragging !== undefined) {
+        //console.log('dragging',dragging,'dirmask',dirmask,'sel',sel & dirmask);
+        if (dragging[0] != dirmask || dragging[1] == (sel & dirmask)) return;
+      } else {
+        if (!e.ctrlKey) {
+          selcells.clear();
+          sel = 0;
+        }
       }
-    }
 
-    sel = sel ^ dirmask;
-    selcells.set(cellid, sel);
-    //console.log(selcells);
-    redraw();
-    return [dirmask, sel & dirmask];
+      sel = sel ^ dirmask;
+      selcells.set(cellid, sel);
+      //console.log(selcells);
+      redraw();
+      return [dirmask, sel & dirmask];
+    } else if (data.type == 1) {
+      // anchored objects
+      if (dragging !== undefined) return;
+      selcells.clear();
+      selobjs.set(data.objid, { ...data });
+      redraw();
+    }
   }
   return;
 }
@@ -688,9 +821,24 @@ async function load() {
         forceSinglePass: true,
       })
     ),
+    //txt.toMesh("?", 0, 0, 0xffffff),
+    cube: new THREE.Mesh(new THREE.BoxGeometry().translate(0,0,0.5).scale(objsize,objsize,objsize), [
+      materials[3],
+      materials[4],
+      materials[2],
+      materials[1],
+      materials[5],
+      materials[6],
+    ]),
   };
 
-  const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
+  for (const wallid in walls) {
+    const mesh = walls[wallid].clone();
+    mesh.material = materials[0];
+    walls["_" + wallid] = mesh;
+  }
+
+  const test = txt.toMesh("Testing123", 0, 4, 0xffff00);
 
   test.scale.x = 2;
   test.scale.y = 2;
@@ -701,7 +849,7 @@ async function load() {
   //test.position.x = xres / 2;
   //test.position.y = yres / 2;
   orthoscene.add(test);
-  orthoscene.add(walls[1].clone());
+  orthoscene.add(walls["cube"].clone());
 
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
