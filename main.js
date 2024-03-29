@@ -487,7 +487,7 @@ function keydown(e) {
       break;
 
     case 34: // PAGE DOWN
-    case 68: // D
+    case 70: // F
       camerarx = directions[camerarx].dw;
       redraw();
       break;
