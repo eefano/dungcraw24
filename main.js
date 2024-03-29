@@ -618,6 +618,21 @@ function keydown(e) {
       redraw();
       break;
 
+    case 49: // 1
+    case 50: // 2
+    case 51: // 3
+    case 52: // 4
+    case 53: // 5
+    case 54: // 6
+    case 55: // 7
+    case 56: // 8
+    case 57: // 9
+      selOp((cellid, dirid) => {
+        spawn(cellid, dirid, e.keyCode - 48, "cube");
+      });
+      redraw();
+      break;
+
     case 46: // Delete
       selOpObj((data, objid) => {
         world[data.cellid].o[data.dirid][data.slotid] = undefined;
@@ -822,7 +837,7 @@ async function load() {
       })
     ),
     //txt.toMesh("?", 0, 0, 0xffffff),
-    cube: new THREE.Mesh(new THREE.BoxGeometry().translate(0,0,0.5).scale(objsize,objsize,objsize), [
+    cube: new THREE.Mesh(new THREE.BoxGeometry().translate(0, 0, 0.5).scale(objsize, objsize, objsize), [
       materials[3],
       materials[4],
       materials[2],
