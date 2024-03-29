@@ -167,6 +167,7 @@ let walls;
 let world;
 
 let scene, camera, renderer, raycaster;
+let orthoscene, orthocamera;
 
 const fov = 109.15;
 
@@ -183,7 +184,7 @@ let cameradir = 0,
 
 let selcells = new Map();
 
-function getmesh(wallindex, cellid, dir, xp, yp, zp, mx,my,mz, offset) {
+function getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, offset) {
   let pool = meshpool[wallindex];
   if (pool === undefined) {
     pool = [];
@@ -217,69 +218,62 @@ function getmesh(wallindex, cellid, dir, xp, yp, zp, mx,my,mz, offset) {
 }
 
 const ViewDistanceSquared = ViewDistance * ViewDistance;
+let space = {};
 
-function scan(scanvalue, cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
-  
+function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
+  const posid = toCellId(xp, yp, zp);
+  if (space[posid] == frame) return;
+  space[posid] = frame;
+
   if (xp * xp + yp * yp + zp * zp > ViewDistanceSquared) return;
 
   let cell = world[cellid];
-  if (cell.scanvalue == scanvalue) return;
-  cell.scanvalue = scanvalue;
   const selected = selcells.get(cellid);
 
-  //console.log('cell',cellid, 'dirmask', dirmask.toString(2), 'xp',xp,'yp',yp,'zp',zp);
+  //console.log('cell',cellid, 'dirmask', dirmask.toString(2), 'level', level);
 
   directions.forEach((dir, dirid) => {
     if (dirmask & dir.mask) {
       let wallindex = cell.w[dirid];
       if (wallindex != 0) {
-        //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex, 'walls',walls[wallindex]);
-        getmesh(wallindex, cellid, dir, xp, yp, zp,mx,my,mz,0.5).layers.enable(1);
+        //console.log('dirid', dirid, 'wall', wallindex, 'level', level,'frame',frame,'sv',sv);
+        getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, 0.5).layers.enable(1);
 
         /*
-        if (dirid == 4 && birdeye) {
-          const test = getmesh("number" + energy, cellid, dir, xp, yp, zp, mx, my, mz,0.48);
-          test.position.y = -0.49;
-          test.scale.x = 1 / 16;
-          test.scale.y = 1 / 16;
+        if (level > 0) {
+          const test = getmesh("number" + level, cellid, dir, xp, yp, zp, mx, my, mz, 0.48);
+          //test.position.y = -0.49;
+          test.scale.x = 1 / 8;
+          test.scale.y = 1 / 8;
         }
         */
 
         if (selected !== undefined && selected & dir.mask) {
-          getmesh(0, cellid, dir, xp, yp, zp,mx,my,mz, 0.49).layers.disable(1);
+          getmesh(0, cellid, dir, xp, yp, zp, mx, my, mz, 0.49).layers.disable(1);
         }
       }
-      
-      let nextcell, nextscan, nextmask, nextmx=mx, nextmy=my, nextmz=mz;
 
-      if (wallindex == 'mirror')
-      {
-        nextcell = cellid;  
-        nextscan = frame++;
+      let nextcell,
+        nextmask,
+        nextmx = mx,
+        nextmy = my,
+        nextmz = mz;
+
+      if (wallindex == "mirror") {
+        nextcell = cellid;
         const back = directions[dir.back];
-        nextmask = (dirmask & back.oppo) | back.mask ;
+        nextmask = (dirmask & back.oppo) | back.mask;
         nextmx *= dir.mirr[0];
         nextmy *= dir.mirr[1];
         nextmz *= dir.mirr[2];
-      }
-      else
-      {
+      } else {
         nextcell = cell.n[dirid];
-        nextscan = scanvalue;
         nextmask = dirmask & dir.oppo; // dir.oppo solo per audio scan
       }
-          
+
       if (nextcell != 0) {
         const mov = dir.mov;
-        scan(
-          nextscan,
-          nextcell,
-          nextmask, 
-          xp + mov[0] * mx,
-          yp + mov[1] * my,
-          zp + mov[2] * mz,
-          nextmx, nextmy, nextmz
-        );
+        scan(nextcell, nextmask, xp + mov[0] * mx, yp + mov[1] * my, zp + mov[2] * mz, nextmx, nextmy, nextmz);
       }
     }
   });
@@ -300,19 +294,24 @@ function rerender() {
     scene.fog.far = ViewDistance;
   }
   camera.rotation.y = directions[camerary].roty;
-
   camera.rotation.order = "YXZ";
+
+  renderer.autoClear = true;
+  renderer.setViewport((xres - yres) / 2, 0, yres, yres);
   renderer.render(scene, camera);
+  //renderer.clearDepth();
+  renderer.autoClear = false;
+  renderer.setViewport(0, 0, xres, yres);
+  renderer.render(orthoscene, orthocamera);
 }
 
 function redraw() {
-  
   cameradir = camerarx == 0 ? camerary : camerarx;
 
   const startmask = directions[cameradir].oppo; /* 0b111111 per audio scan */
 
-  scan(frame++, cameracell, startmask);
-
+  frame++;
+  scan(cameracell, startmask);
 
   //console.log(meshpool);
   //console.log(meshindex);
@@ -328,8 +327,8 @@ function redraw() {
   rerender();
 }
 
-function toCellId(p) {
-  return p.join(" ");
+function toCellId(x, y, z) {
+  return x + " " + y + " " + z;
 }
 function toPosition(cellid) {
   return cellid.split(" ").map((v) => Number(v));
@@ -348,7 +347,7 @@ function neighborId(cellid, d) {
   p[0] += mov[0];
   p[1] += mov[1];
   p[2] += mov[2];
-  return toCellId(p);
+  return toCellId(p[0], p[1], p[2]);
 }
 
 function demolishMany(cellid, cell, mask) {
@@ -366,7 +365,7 @@ function demolishMany(cellid, cell, mask) {
 function paint(cellid, dirid, wallid) {
   const cell = world[cellid];
   if (cell.n[dirid] == 0) {
-    cell.w[dirid] = wallid;
+    cell.w[dirid] = cell.w[dirid] == wallid ? dirid + 1 : wallid;
   }
 }
 
@@ -381,7 +380,6 @@ function push(cellid, dirid, bulldoze = true) {
       newcell = {
         n: [0, 0, 0, 0, 0, 0],
         w: cell.w.map((v, i) => (v == 0 && cell.n[i] != 0 ? i + 1 : v)),
-        frame: cell.frame,
       };
       world[newid] = newcell;
     }
@@ -403,6 +401,19 @@ function movement(dirid) {
   }
 }
 
+function selOp(func) {
+  if (selcells.size > 0) {
+    selcells.forEach((selmask, cellid) => {
+      directions.forEach((d, dirid) => {
+        if (selmask & d.mask) func(cellid, dirid);
+      });
+    });
+    selcells.clear();
+  } else {
+    func(cameracell, cameradir, false);
+  }
+}
+
 function keydown(e) {
   if (keystate[e.keyCode]) return;
   keystate[e.keyCode] = true;
@@ -412,17 +423,7 @@ function keydown(e) {
   switch (e.keyCode) {
     case 13: // ENTER
     case 32: // SPACE
-      if (selcells.size > 0) {
-        selcells.forEach((selmask, cellid) => {
-          directions.forEach((d, dirid) => {
-            if (selmask & d.mask) push(cellid, dirid);
-          });
-        });
-        selcells.clear();
-      } else {
-        // CREATE ALCOVE
-        push(cameracell, cameradir, false);
-      }
+      selOp((cellid, dirid) => push(cellid, dirid, !e.shiftKey));
       redraw();
       break;
 
@@ -462,11 +463,7 @@ function keydown(e) {
         e.preventDefault();
         var dataStr =
           "data:text/json;charset=utf-8," +
-          encodeURIComponent(
-            JSON.stringify(world, (key, value) =>
-              key === "frame" ? undefined : value
-            )
-          );
+          encodeURIComponent(JSON.stringify(world, (key, value) => (key === "frame" ? undefined : value)));
         var dlAnchorElem = document.getElementById("downloadAnchorElem");
         dlAnchorElem.setAttribute("href", dataStr);
         dlAnchorElem.setAttribute("download", "world.json");
@@ -496,12 +493,16 @@ function keydown(e) {
       birdeye = !birdeye;
       redraw();
       break;
-    
+
     case 88: // X
-      paint(cameracell, cameradir, 'mirror');
+      selOp((cellid, dirid) => paint(cellid, dirid, "mirror"));
       redraw();
       break;
-      
+
+    case 101: // numpad 5
+      selOp((cellid, dirid) => {});
+      redraw();
+      break;
   }
 }
 function keyup(e) {
@@ -585,6 +586,10 @@ async function load() {
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0, 0, ViewDistance);
 
+  orthoscene = new THREE.Scene();
+  orthocamera = new THREE.OrthographicCamera(0, xres, yres, 0, 0.1, 100);
+  orthocamera.position.z = 0.1;
+
   const light = new THREE.AmbientLight();
   scene.add(light);
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -593,19 +598,21 @@ async function load() {
   directionalLight.position.z = 1;
   scene.add(directionalLight);
 
-  camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 1000);
+  camera = new THREE.PerspectiveCamera(fov, 1, 0.1, ViewDistance);
   renderer = new THREE.WebGLRenderer({ canvas: canvas });
-  renderer.setViewport((xres - yres) / 2, 0, yres, yres);
+
   raycaster = new THREE.Raycaster();
   raycaster.layers.set(1);
 
   const loader = new GLTFLoader();
 
+  /*
   for (let n of ["wall", "floor", "arch", "door"]) {
     const model = await loader.loadAsync("data/" + n + ".glb");
     models[n] = model.scene;
     //console.log(model.scene);
   }
+  */
 
   await preload("image", ".png", async (v, href) => {
     const t = await new THREE.TextureLoader().loadAsync(href);
@@ -614,9 +621,9 @@ async function load() {
     textures[v] = t;
   });
 
-  console.log(textures);
+  //console.log(textures);
 
-  // checkertexture(128, 128, 0xffff00);
+  const checker = checkertexture(128, 128, 0xffffff);
 
   let materials = [
     new THREE.MeshBasicMaterial({
@@ -634,10 +641,9 @@ async function load() {
   ];
 
   let geometries = [
-    new THREE.PlaneGeometry(1, 1, 5, 5),//.translate(0, 0, -0.49),
-    new THREE.PlaneGeometry(1, 1, 1, 1),//.translate(0, 0, -0.5),
+    new THREE.PlaneGeometry(1, 1, 5, 5), //.translate(0, 0, -0.49),
+    new THREE.PlaneGeometry(1, 1, 1, 1), //.translate(0, 0, -0.5),
   ];
-
 
   await preload("fetch", ".mp3", async (v, href) => {
     const res = await fetch(href);
@@ -646,23 +652,12 @@ async function load() {
   });
 
   await preload("fetch", ".json", async (v, href) => {
-    console.log(v);
     const res = await fetch(href);
     if (!res.ok) return;
     jsons[v] = await res.json();
   });
 
-  txt = TXT(textures["gamefont"], jsons["gamefont"], 64);
-
-  /*
-  const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
-  test.scale.x = 1/64;
-  test.scale.y = 1/64;
-  test.rotation.x = -rHALF;
-  test.position.y -= 0.49;
-  //test.position.z = -1;
-  scene.add(test);
-  */
+  txt = TXT(textures["gamefonto"], jsons["gamefont"], 64);
 
   walls = {
     0: new THREE.Mesh(geometries[0], materials[0]),
@@ -673,21 +668,40 @@ async function load() {
     5: new THREE.Mesh(geometries[1], materials[5]),
     6: new THREE.Mesh(geometries[1], materials[6]),
     7: new THREE.Mesh(geometries[1], materials[7]),
-    number0: txt.toMesh("0", 0, 0, 0x666600),
-    number1: txt.toMesh("1", 0, 0, 0x777700),
-    number2: txt.toMesh("2", 0, 0, 0x888800),
-    number3: txt.toMesh("3", 0, 0, 0x999900),
-    number4: txt.toMesh("4", 0, 0, 0xaaaa00),
-    number5: txt.toMesh("5", 0, 0, 0xbbbb00),
-    number6: txt.toMesh("6", 0, 0, 0xcccc00),
-    number7: txt.toMesh("7", 0, 0, 0xdddd00),
-    number8: txt.toMesh("8", 0, 0, 0xeeee00),
-    number9: txt.toMesh("9", 0, 0, 0xffff00),
+    number0: txt.toMesh("0", 0, 0, 0xa8a8a8),
+    number1: txt.toMesh("1", 0, 0, 0xb0b0b0),
+    number2: txt.toMesh("2", 0, 0, 0xb8b8b8),
+    number3: txt.toMesh("3", 0, 0, 0xc0c0c0),
+    number4: txt.toMesh("4", 0, 0, 0xc8c8c8),
+    number5: txt.toMesh("5", 0, 0, 0xd0d0d0),
+    number6: txt.toMesh("6", 0, 0, 0xd8d8d8),
+    number7: txt.toMesh("7", 0, 0, 0xf0f0f0),
+    number8: txt.toMesh("8", 0, 0, 0xf8f8f8),
+    number9: txt.toMesh("9", 0, 0, 0xffffff),
     mirror: new THREE.Mesh(
       geometries[1],
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity: .2 })
+      new THREE.MeshBasicMaterial({
+        map: checker,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.2,
+        forceSinglePass: true,
+      })
     ),
   };
+
+  const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
+
+  test.scale.x = 2;
+  test.scale.y = 2;
+  /*
+  test.rotation.x = -rHALF;
+  test.position.y -= 0.49;
+  */
+  //test.position.x = xres / 2;
+  //test.position.y = yres / 2;
+  orthoscene.add(test);
+  orthoscene.add(walls[1].clone());
 
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
