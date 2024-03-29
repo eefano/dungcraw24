@@ -259,9 +259,9 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
   let deferred = [];
 
   directions.forEach((dir, dirid) => {
+    let wallindex = cell.w[dirid];
     if (dirmask & dir.mask) {
       // RENDER WALL
-      let wallindex = cell.w[dirid];
       if (wallindex != 0) {
         //console.log('dirid', dirid, 'wall', wallindex, 'level', level,'frame',frame,'sv',sv);
         const mesh = getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, 0.5);
@@ -287,34 +287,36 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
           mesh.scale.z *= 0.9;
         }
       }
-      // RENDER OBJECTS ANCHORED TO WALL
-      const cello = cell.o;
-      if (cello !== undefined) {
-        const objs = cello[dirid];
-        for (const slotid in objs) {
-          const obj = objs[slotid];
-          if (obj !== undefined) {
-            const slot = slots[slotid];
-            const mesh = getmesh(obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
-            mesh.layers.enable(1);
-            const userData = mesh.userData;
-            userData.type = 1;
-            userData.cellid = cellid;
-            userData.dirid = dirid;
-            userData.slotid = slotid;
-            userData.objid = cellid + " " + dirid + " " + slotid;
+    }
+    // RENDER OBJECTS ANCHORED TO WALL
+    const cello = cell.o;
+    if (cello !== undefined) {
+      const objs = cello[dirid];
+      for (const slotid in objs) {
+        const obj = objs[slotid];
+        if (obj !== undefined) {
+          const slot = slots[slotid];
+          const mesh = getmesh(obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
+          mesh.layers.enable(1);
+          const userData = mesh.userData;
+          userData.type = 1;
+          userData.cellid = cellid;
+          userData.dirid = dirid;
+          userData.slotid = slotid;
+          userData.objid = cellid + " " + dirid + " " + slotid;
 
-            if (selobjs.has(userData.objid)) {
-              const mesh = getmesh("_" + obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
-              mesh.scale.x *= 1.1;
-              mesh.scale.y *= 1.1;
-              mesh.scale.z *= 1.1;
-              mesh.layers.disable(1);
-            }
+          if (selobjs.has(userData.objid)) {
+            const mesh = getmesh("_" + obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
+            mesh.scale.x *= 1.1;
+            mesh.scale.y *= 1.1;
+            mesh.scale.z *= 1.1;
+            mesh.layers.disable(1);
           }
         }
       }
+    }
 
+    if (dirmask & dir.mask) {
       if (wallindex == "mirror") {
         deferred.push(dirid);
       } else {
@@ -502,7 +504,7 @@ function selOp(func) {
         if (selmask & d.mask) func(cellid, dirid);
       });
     });
-    selcells.clear();
+    //selcells.clear();
   } else {
     func(cameracell, cameradir, false);
   }
