@@ -17,5 +17,7 @@ Controls (work in progress)
 - SHIFT + D/RIGHTARROW : strafe right
 - R/PAGE UP : look up
 - F/PAGE DOWN: look down
+- X : put a mirror on the wall you're facing
+
 
 

@@ -10,16 +10,16 @@ var keytrigs = new Set();
 var jsons = {};
 var models = {};
 var textures = {};
-var birdeye = true;
+var birdeye = false;
 
-const ViewDistance = 9;
+const ViewDistance = 5;
 
 function step() {
   window.requestAnimationFrame(step);
 }
 
 function init() {
-  world = jsons["world.json"];
+  world = jsons["world"];
   if (world === undefined) {
     world = {
       "0 0 0": {
@@ -83,7 +83,6 @@ const directions = [
     dw: 4,
     rotx: 0,
     roty: 0,
-    rotate: (x, y, z) => [x, 0, z],
   },
   {
     mov: [0, 0, -1],
@@ -97,7 +96,6 @@ const directions = [
     dw: 4,
     rotx: 0,
     roty: Math.PI,
-    rotate: (x, y, z) => [-x, 0, -z],
   },
   {
     mov: [+1, 0, 0],
@@ -111,7 +109,6 @@ const directions = [
     dw: 4,
     rotx: 0,
     roty: +rHALF,
-    rotate: (x, y, z) => [-z, 0, x],
   },
   {
     mov: [-1, 0, 0],
@@ -125,7 +122,6 @@ const directions = [
     dw: 4,
     rotx: 0,
     roty: -rHALF,
-    rotate: (x, y, z) => [z, 0, -x],
   },
   {
     mov: [0, +1, 0],
@@ -139,7 +135,6 @@ const directions = [
     dw: 4,
     rotx: -rHALF,
     roty: 0,
-    //   rotate: (x, y, z) => [x, y, 0],
   },
   {
     mov: [0, -1, 0],
@@ -153,7 +148,6 @@ const directions = [
     dw: 0,
     rotx: +rHALF,
     roty: 0,
-    //   rotate: (x, y, z) => [x, y, 0],
   },
 ];
 
@@ -168,7 +162,7 @@ const pointer = new THREE.Vector2();
 
 let meshpool = {},
   meshindex = {},
-  scanvalue = 0;
+  frame = 0;
 
 let cameradir = 0,
   camerarx = 0,
@@ -177,7 +171,7 @@ let cameradir = 0,
 
 let selcells = new Map();
 
-function getmesh(wallindex, cellid, dir, xp, yp, zp) {
+function getmesh(wallindex, cellid, dir, xp, yp, zp, mx,my,mz) {
   let pool = meshpool[wallindex];
   if (pool === undefined) {
     pool = [];
@@ -197,17 +191,20 @@ function getmesh(wallindex, cellid, dir, xp, yp, zp) {
     mesh.userData.dirmask = dir.mask;
     mesh.visible = true;
   }
-  mesh.rotation.x = dir.rotx;
-  mesh.rotation.y = dir.roty;
-  mesh.position.x = -xp;
-  mesh.position.y = -yp;
-  mesh.position.z = -zp;
+  mesh.rotation.x = mz * dir.rotx;
+  mesh.rotation.y = mz * dir.roty;
+  mesh.position.x = -xp - 0.50 * dir.mov[0];
+  mesh.position.y = -yp - 0.50 * dir.mov[1];
+  mesh.position.z = -zp - 0.50 * dir.mov[2];
+  mesh.scale.x = mx;
+  mesh.scale.y = my;
+  mesh.scale.z = mz;
 
   meshindex[wallindex] = index + 1;
   return mesh;
 }
 
-function scan(cellid, energy, dirmask, xp, yp, zp) {
+function scan(scanvalue, cellid, energy, dirmask, xp=0, yp=0, zp=0, mx=1, my=1, mz=1) {
   if (energy <= 0) return;
   energy--;
   let cell = world[cellid];
@@ -222,173 +219,55 @@ function scan(cellid, energy, dirmask, xp, yp, zp) {
       let wallindex = cell.w[dirid];
       if (wallindex != 0) {
         //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex, 'walls',walls[wallindex]);
-        getmesh(wallindex, cellid, dir, xp, yp, zp).layers.enable(1);
+        getmesh(wallindex, cellid, dir, xp, yp, zp,mx,my,mz).layers.enable(1);
 
+        /*
         if (dirid == 4 && birdeye && energy < 10) {
-          const test = getmesh("number" + energy, cellid, dir, xp, yp, zp);
+          const test = getmesh("number" + energy, cellid, dir, xp, yp, zp, mx, my, mz);
           test.position.y = -0.49;
           test.scale.x = 1 / 16;
           test.scale.y = 1 / 16;
         }
+        */
 
         if (selected !== undefined && selected & dir.mask) {
-          getmesh(0, cellid, dir, xp, yp, zp).layers.disable(1);
+          getmesh(0, cellid, dir, xp, yp, zp,mx,my,mz).layers.disable(1);
         }
       }
+      
+      let nextcell, nextscan, nextmask, nextmx=mx, nextmy=my, nextmz=mz;
 
-      const next = cell.n[dirid];
-      if (next != 0) {
+      if (wallindex == 'mirror')
+      {
+        nextcell = cellid;  
+        nextscan = frame++;
+        nextmask = directions[dir.back].oppo;
+        if (dir.mov[0] != 0) nextmx *= -1;
+        else if (dir.mov[1] != 0) nextmy *= -1;
+        else if (dir.mov[2] != 0) nextmz *= -1;
+      }
+      else
+      {
+        nextcell = cell.n[dirid];
+        nextscan = scanvalue;
+        nextmask = dirmask & dir.oppo; // dir.oppo solo per audio scan
+      }
+          
+      if (nextcell != 0) {
         const mov = dir.mov;
         scan(
-          next,
+          nextscan,
+          nextcell,
           energy,
-          dirmask & dir.oppo, // dir.oppo solo per audio scan
-          xp + mov[0],
-          yp + mov[1],
-          zp + mov[2]
+          nextmask, 
+          xp + mov[0] * mx,
+          yp + mov[1] * my,
+          zp + mov[2] * mz,
+          nextmx, nextmy, nextmz
         );
       }
     }
   });
-}
-
-function scan_frustum(cellid, energy, sxdx, updw, maindir, xp, yp, zp) {
-  if (energy <= 0) return;
-  let cell = world[cellid];
-  const selected = selcells.get(cellid);
-
-  console.log(
-    "cell",
-    cellid,
-    "energy",
-    energy,
-    "sxdx",
-    sxdx,
-    "updw",
-    updw,
-    "xp",
-    xp,
-    "yp",
-    yp,
-    "zp",
-    zp
-  );
-
-  for (let dirid = 0; dirid < directions.length; dirid++) {
-    if (dirid == maindir.back) continue;
-    const dir = directions[dirid];
-
-    if (cell.scanvalue != scanvalue) {
-      let wallindex = cell.w[dirid];
-      if (wallindex != 0) {
-        //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex, 'walls',walls[wallindex]);
-        getmesh(wallindex, cellid, dir, xp, yp, zp).layers.enable(1);
-
-        if (dirid == 4 && birdeye && energy < 10) {
-          const test = getmesh("number" + energy, cellid, dir, xp, yp, zp);
-          test.position.y = -0.49;
-          test.scale.x = 1 / 16;
-          test.scale.y = 1 / 16;
-        }
-
-        if (selected !== undefined && selected & dir.mask) {
-          getmesh(0, cellid, dir, xp, yp, zp).layers.disable(1);
-        }
-      }
-    }
-    
-    let nextsxdx = sxdx,
-      nextupdw = updw;
-
-    if (dirid == maindir.sx || dirid == maindir.dx) {
-      if (sxdx) continue;
-      else nextsxdx = true;
-    }
-    if (dirid == maindir.up || dirid == maindir.dw) {
-      if (updw) continue;
-      else nextupdw = true;
-    }
-    if (dirid == maindir.front) {
-      nextupdw = false;
-      nextsxdx = false;
-    }
-
-    const next = cell.n[dirid];
-    if (next != 0) {
-      const mov = dir.mov;
-      scan_frustum(
-        next,
-        energy-1,
-        nextsxdx,
-        nextupdw,
-        maindir,
-        xp + mov[0],
-        yp + mov[1],
-        zp + mov[2]
-      );
-    }
-  }
-  cell.scanvalue = scanvalue;
-}
-
-let playerpos, county;
-
-function scan_arc(distance, min, max, rotate) {
-  if (distance > ViewDistance || min >= max) return;
-  console.log("distance", distance, "min", min, "max", max);
-  for (
-    var i = Math.round(distance * min);
-    i <= Math.round(distance * max);
-    i++
-  ) {
-    const r = rotate(distance, 0, i);
-    const p = playerpos.map((v, j) => v + r[j]);
-
-    //console.log('playerpos',playerpos,'r',r,'p',p);
-    console.log(p);
-
-    const cellid = toCellId(p);
-    const cell = world[cellid];
-
-    if (cell === undefined) {
-      // BLOCKED  - 0.6 works better than 0.5 somehow
-      scan_arc(distance + 1, min, (i - 0.6) / distance, rotate);
-      min = (i + 0.6) / distance;
-    } else {
-      // VISIBLE
-      if (cell.scanvalue != scanvalue) {
-        cell.scanvalue = scanvalue;
-        directions.forEach((dir, dirid) => {
-          let wallindex = cell.w[dirid];
-          if (wallindex != 0) {
-            //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex);
-            getmesh(wallindex, cellid, dir, p[0], p[1], p[2]).layers.enable(1);
-
-            if (dirid == 4 && birdeye && county < 10) {
-              const test = getmesh(
-                "number" + county++,
-                cellid,
-                dir,
-                p[0],
-                p[1],
-                p[2]
-              );
-              test.position.y = -0.49;
-              test.scale.x = 1 / 16;
-              test.scale.y = 1 / 16;
-            }
-
-            const selected = selcells.get(cellid);
-
-            if (selected !== undefined && selected & dir.mask) {
-              getmesh(0, cellid, dir, p[0], p[1], p[2]).layers.disable(1);
-            }
-          }
-        });
-      }
-    }
-  }
-  scan_arc(distance + 1, min, max, rotate);
 }
 
 function rerender() {
@@ -401,43 +280,24 @@ function rerender() {
     camera.rotation.x = directions[camerarx].rotx;
     //camera.rotation.y = directions[camerary].roty;
     camera.position.y = 0;
+    camera.position.x = 0;
+    camera.position.z = 0;
     scene.fog.far = ViewDistance;
   }
   camera.rotation.y = directions[camerary].roty;
-  camera.position.x = -playerpos[0];
-  camera.position.z = -playerpos[2];
 
   camera.rotation.order = "YXZ";
   renderer.render(scene, camera);
 }
 
 function redraw() {
-  scanvalue++;
-
+  
   cameradir = camerarx == 0 ? camerary : camerarx;
 
   const startmask = directions[cameradir].oppo; /* 0b111111 per audio scan */
 
-  //scan(cameracell, ViewDistance * 2, startmask, 0, 0, 0);
-  scan_frustum(
-    cameracell,
-    ViewDistance,
-    false,
-    false,
-    directions[cameradir],
-    0,
-    0,
-    0
-  );
+  scan(frame++, cameracell, ViewDistance * 2, startmask, 0, 0, 0);
 
-  playerpos = toPosition(cameracell);
-  county = 0;
-
-  /*
-  directions.forEach((dir, dirid) => {
-    if (dirid ==0) scan_arc(0, -1.1, 1.1, dir.rotate);
-  });
-  */
 
   //console.log(meshpool);
   //console.log(meshindex);
@@ -488,6 +348,13 @@ function demolishMany(cellid, cell, mask) {
   });
 }
 
+function paint(cellid, dirid, wallid) {
+  const cell = world[cellid];
+  if (cell.n[dirid] == 0) {
+    cell.w[dirid] = wallid;
+  }
+}
+
 function push(cellid, dirid, bulldoze = true) {
   const cell = world[cellid];
   if (cell.n[dirid] == 0) {
@@ -499,7 +366,7 @@ function push(cellid, dirid, bulldoze = true) {
       newcell = {
         n: [0, 0, 0, 0, 0, 0],
         w: cell.w.map((v, i) => (v == 0 && cell.n[i] != 0 ? i + 1 : v)),
-        scanvalue: cell.scanvalue,
+        frame: cell.frame,
       };
       world[newid] = newcell;
     }
@@ -582,7 +449,7 @@ function keydown(e) {
           "data:text/json;charset=utf-8," +
           encodeURIComponent(
             JSON.stringify(world, (key, value) =>
-              key === "scanvalue" ? undefined : value
+              key === "frame" ? undefined : value
             )
           );
         var dlAnchorElem = document.getElementById("downloadAnchorElem");
@@ -614,6 +481,12 @@ function keydown(e) {
       birdeye = !birdeye;
       redraw();
       break;
+    
+    case 88: // X
+      paint(cameracell, cameradir, 'mirror');
+      redraw();
+      break;
+      
   }
 }
 function keyup(e) {
@@ -640,7 +513,7 @@ function selectCell(e) {
   if (intersects.length > 0) {
     const o = intersects[0].object;
     const data = o.userData;
-    console.log("data", data);
+    //console.log("data", data);
     const cellid = data.cellid;
     const dirmask = data.dirmask;
     let sel = selcells.get(cellid) || 0;
@@ -719,47 +592,14 @@ async function load() {
     //console.log(model.scene);
   }
 
-  {
-    const group = models["wall"].children[0];
-    group.scale.x = 0.5;
-    group.scale.y = 0.5;
-    group.scale.z = 0.25;
-    group.position.z = -0.5;
-  }
-  {
-    const group = models["floor"].children[0];
-    group.rotation.x = rHALF;
-    group.scale.x = 0.5;
-    group.scale.y = 1 / 8;
-    group.scale.z = 0.5;
-    group.position.z = -0.5;
-  }
-  {
-    const group = models["arch"].children[0];
-    //group.rotation.x = rHALF;
-    group.scale.x = 0.25;
-    group.scale.y = 0.25;
-    group.scale.z = 0.15;
-    group.position.z = -0.5;
-    group.position.y = -0.5;
-  }
-  {
-    const group = models["door"].children[0];
-    //group.rotation.x = rHALF;
-    group.scale.x = 0.25;
-    group.scale.y = 0.25;
-    group.scale.z = 0.15;
-    group.position.z = -0.5;
-    group.position.y = -0.5;
-  }
+  await preload("image", ".png", async (v, href) => {
+    const t = await new THREE.TextureLoader().loadAsync(href);
+    t.minFilter = THREE.NearestFilter;
+    t.magFilter = THREE.NearestFilter;
+    textures[v] = t;
+  });
 
-  let up = await new THREE.TextureLoader().loadAsync("data/up.png");
-  up.minFilter = THREE.NearestFilter;
-  up.magFilter = THREE.NearestFilter;
-
-  let fontex = await new THREE.TextureLoader().loadAsync("data/gamefonto.png");
-  fontex.minFilter = THREE.NearestFilter;
-  fontex.magFilter = THREE.NearestFilter;
+  console.log(textures);
 
   // checkertexture(128, 128, 0xffff00);
 
@@ -769,27 +609,20 @@ async function load() {
       color: 0xffffff,
       fog: false,
     }),
-    new THREE.MeshBasicMaterial({ map: up, color: 0xffff00 }),
-    new THREE.MeshBasicMaterial({ map: up, color: 0xafaf00 }),
-    new THREE.MeshBasicMaterial({ map: up, color: 0x00ffff }),
-    new THREE.MeshBasicMaterial({ map: up, color: 0x00afaf }),
-    new THREE.MeshBasicMaterial({ map: up, color: 0xff00ff }),
-    new THREE.MeshBasicMaterial({ map: up, color: 0xaf00af }),
-    new THREE.MeshBasicMaterial({ map: up, color: 0xc0c0c0 }),
+    new THREE.MeshBasicMaterial({ map: textures.n, color: 0xffff00 }),
+    new THREE.MeshBasicMaterial({ map: textures.s, color: 0xafaf00 }),
+    new THREE.MeshBasicMaterial({ map: textures.w, color: 0x00ffff }),
+    new THREE.MeshBasicMaterial({ map: textures.e, color: 0x00afaf }),
+    new THREE.MeshBasicMaterial({ map: textures.dw, color: 0xff00ff }),
+    new THREE.MeshBasicMaterial({ map: textures.up, color: 0xaf00af }),
+    new THREE.MeshBasicMaterial({ map: textures.up, color: 0xc0c0c0 }),
   ];
 
   let geometries = [
-    new THREE.PlaneGeometry(1, 1, 5, 5).translate(0, 0, -0.49),
-    new THREE.PlaneGeometry(1, 1, 1, 1).translate(0, 0, -0.5),
+    new THREE.PlaneGeometry(1, 1, 5, 5),//.translate(0, 0, -0.49),
+    new THREE.PlaneGeometry(1, 1, 1, 1),//.translate(0, 0, -0.5),
   ];
 
-  preload("image", ".png", (v, href) => {
-    let i = new Image();
-    i.onload = () => {
-      //gfx.loadTexture(v, i);
-    };
-    i.src = href;
-  });
 
   await preload("fetch", ".mp3", async (v, href) => {
     const res = await fetch(href);
@@ -798,12 +631,13 @@ async function load() {
   });
 
   await preload("fetch", ".json", async (v, href) => {
+    console.log(v);
     const res = await fetch(href);
     if (!res.ok) return;
     jsons[v] = await res.json();
   });
 
-  txt = TXT(fontex, jsons["gamefont.json"], 64);
+  txt = TXT(textures["gamefont"], jsons["gamefont"], 64);
 
   /*
   const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
@@ -817,14 +651,10 @@ async function load() {
 
   walls = {
     0: new THREE.Mesh(geometries[0], materials[0]),
-    //models["wall"],
     1: new THREE.Mesh(geometries[1], materials[1]),
     2: new THREE.Mesh(geometries[1], materials[2]),
-    //models["arch"],
-    //models["door"],
     3: new THREE.Mesh(geometries[1], materials[3]),
     4: new THREE.Mesh(geometries[1], materials[4]),
-    //models["floor"],
     5: new THREE.Mesh(geometries[1], materials[5]),
     6: new THREE.Mesh(geometries[1], materials[6]),
     7: new THREE.Mesh(geometries[1], materials[7]),
@@ -838,6 +668,10 @@ async function load() {
     number7: txt.toMesh("7", 0, 0, 0xdddd00),
     number8: txt.toMesh("8", 0, 0, 0xeeee00),
     number9: txt.toMesh("9", 0, 0, 0xffff00),
+    mirror: new THREE.Mesh(
+      geometries[1],
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity: .2 })
+    ),
   };
 
   window.addEventListener("keydown", keydown);
