@@ -72,7 +72,9 @@ const rHALF = Math.PI / 2.0;
 
 const directions = [
   {
+    // N
     mov: [0, 0, +1],
+    mirr: [1, 1, -1],
     mask: 0b000001,
     oppo: 0b111101,
     front: 0,
@@ -85,7 +87,9 @@ const directions = [
     roty: 0,
   },
   {
+    // S
     mov: [0, 0, -1],
+    mirr: [1, 1, -1],
     mask: 0b000010,
     oppo: 0b111110,
     front: 1,
@@ -98,7 +102,9 @@ const directions = [
     roty: Math.PI,
   },
   {
+    // W
     mov: [+1, 0, 0],
+    mirr: [-1, 1, 1],
     mask: 0b000100,
     oppo: 0b110111,
     front: 2,
@@ -111,7 +117,9 @@ const directions = [
     roty: +rHALF,
   },
   {
+    // E
     mov: [-1, 0, 0],
+    mirr: [-1, 1, 1],
     mask: 0b001000,
     oppo: 0b111011,
     front: 3,
@@ -124,7 +132,9 @@ const directions = [
     roty: -rHALF,
   },
   {
+    // UP
     mov: [0, +1, 0],
+    mirr: [1, -1, 1],
     mask: 0b010000,
     oppo: 0b011111,
     front: 4,
@@ -137,7 +147,9 @@ const directions = [
     roty: 0,
   },
   {
+    // DW
     mov: [0, -1, 0],
+    mirr: [1, -1, 1],
     mask: 0b100000,
     oppo: 0b101111,
     front: 5,
@@ -171,7 +183,7 @@ let cameradir = 0,
 
 let selcells = new Map();
 
-function getmesh(wallindex, cellid, dir, xp, yp, zp, mx,my,mz) {
+function getmesh(wallindex, cellid, dir, xp, yp, zp, mx,my,mz, offset) {
   let pool = meshpool[wallindex];
   if (pool === undefined) {
     pool = [];
@@ -191,11 +203,11 @@ function getmesh(wallindex, cellid, dir, xp, yp, zp, mx,my,mz) {
     mesh.userData.dirmask = dir.mask;
     mesh.visible = true;
   }
-  mesh.rotation.x = mz * dir.rotx;
-  mesh.rotation.y = mz * dir.roty;
-  mesh.position.x = -xp - 0.50 * dir.mov[0];
-  mesh.position.y = -yp - 0.50 * dir.mov[1];
-  mesh.position.z = -zp - 0.50 * dir.mov[2];
+  mesh.rotation.x = mz * my * dir.rotx;
+  mesh.rotation.y = mz * mx * dir.roty;
+  mesh.position.x = -xp - offset * dir.mov[0] * mx;
+  mesh.position.y = -yp - offset * dir.mov[1] * my;
+  mesh.position.z = -zp - offset * dir.mov[2] * mz;
   mesh.scale.x = mx;
   mesh.scale.y = my;
   mesh.scale.z = mz;
@@ -204,26 +216,29 @@ function getmesh(wallindex, cellid, dir, xp, yp, zp, mx,my,mz) {
   return mesh;
 }
 
-function scan(scanvalue, cellid, energy, dirmask, xp=0, yp=0, zp=0, mx=1, my=1, mz=1) {
-  if (energy <= 0) return;
-  energy--;
+const ViewDistanceSquared = ViewDistance * ViewDistance;
+
+function scan(scanvalue, cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
+  
+  if (xp * xp + yp * yp + zp * zp > ViewDistanceSquared) return;
+
   let cell = world[cellid];
   if (cell.scanvalue == scanvalue) return;
   cell.scanvalue = scanvalue;
   const selected = selcells.get(cellid);
 
-  //console.log('cell',cellid, 'energy', energy, 'dirmask', dirmask.toString(2), 'xp',xp,'yp',yp,'zp',zp);
+  //console.log('cell',cellid, 'dirmask', dirmask.toString(2), 'xp',xp,'yp',yp,'zp',zp);
 
   directions.forEach((dir, dirid) => {
     if (dirmask & dir.mask) {
       let wallindex = cell.w[dirid];
       if (wallindex != 0) {
         //console.log('cellid',cellid,'dirid',dirid,'wall',wallindex, 'walls',walls[wallindex]);
-        getmesh(wallindex, cellid, dir, xp, yp, zp,mx,my,mz).layers.enable(1);
+        getmesh(wallindex, cellid, dir, xp, yp, zp,mx,my,mz,0.5).layers.enable(1);
 
         /*
-        if (dirid == 4 && birdeye && energy < 10) {
-          const test = getmesh("number" + energy, cellid, dir, xp, yp, zp, mx, my, mz);
+        if (dirid == 4 && birdeye) {
+          const test = getmesh("number" + energy, cellid, dir, xp, yp, zp, mx, my, mz,0.48);
           test.position.y = -0.49;
           test.scale.x = 1 / 16;
           test.scale.y = 1 / 16;
@@ -231,7 +246,7 @@ function scan(scanvalue, cellid, energy, dirmask, xp=0, yp=0, zp=0, mx=1, my=1, 
         */
 
         if (selected !== undefined && selected & dir.mask) {
-          getmesh(0, cellid, dir, xp, yp, zp,mx,my,mz).layers.disable(1);
+          getmesh(0, cellid, dir, xp, yp, zp,mx,my,mz, 0.49).layers.disable(1);
         }
       }
       
@@ -241,10 +256,11 @@ function scan(scanvalue, cellid, energy, dirmask, xp=0, yp=0, zp=0, mx=1, my=1, 
       {
         nextcell = cellid;  
         nextscan = frame++;
-        nextmask = directions[dir.back].oppo;
-        if (dir.mov[0] != 0) nextmx *= -1;
-        else if (dir.mov[1] != 0) nextmy *= -1;
-        else if (dir.mov[2] != 0) nextmz *= -1;
+        const back = directions[dir.back];
+        nextmask = (dirmask & back.oppo) | back.mask ;
+        nextmx *= dir.mirr[0];
+        nextmy *= dir.mirr[1];
+        nextmz *= dir.mirr[2];
       }
       else
       {
@@ -258,7 +274,6 @@ function scan(scanvalue, cellid, energy, dirmask, xp=0, yp=0, zp=0, mx=1, my=1, 
         scan(
           nextscan,
           nextcell,
-          energy,
           nextmask, 
           xp + mov[0] * mx,
           yp + mov[1] * my,
@@ -296,7 +311,7 @@ function redraw() {
 
   const startmask = directions[cameradir].oppo; /* 0b111111 per audio scan */
 
-  scan(frame++, cameracell, ViewDistance * 2, startmask, 0, 0, 0);
+  scan(frame++, cameracell, startmask);
 
 
   //console.log(meshpool);

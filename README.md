@@ -18,6 +18,6 @@ Controls (work in progress)
 - R/PAGE UP : look up
 - F/PAGE DOWN: look down
 - X : put a mirror on the wall you're facing
-
+- M : toggle bird-eye view
 
 
