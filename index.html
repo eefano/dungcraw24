@@ -40,17 +40,6 @@
       document.getElementById("gamecanvas").focus();
     }
 
-    async function preload(as, suffix, callback) {
-      let elements = document.querySelectorAll(
-        'link[as="' + as + '"][href$="' + suffix + '"]'
-      );
-      for (let i = 0; i < elements.length; i++) {
-        let href = elements[i].attributes["href"].nodeValue;
-        let v = href.substring(5,href.length-suffix.length);
-        await callback(v, elements[i].href);
-      }
-    }
-
     function resize() {
       canvas = document.getElementById("gamecanvas");
 

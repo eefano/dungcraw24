@@ -1,0 +1,16 @@
+{
+    "extends": "eslint:recommended",
+    "env": {
+        "es6": true,
+        "browser": true
+      },
+    "rules": {
+        "no-unused-vars": "warn",
+        "require-await": "error",
+        "no-fallthrough": "warn",
+    },
+    "parserOptions": {
+        "ecmaVersion": 8,
+        "sourceType": "module"
+      }
+}

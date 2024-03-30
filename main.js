@@ -2,6 +2,9 @@ import WebGL from "three/addons/capabilities/WebGL.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import { TXT } from "./txt.js";
+import { rHALF, directions } from "./tables.js";
+import * as Procedural from "./procedural.js";
+import { editorhandler, toCellId, selcells, selobjs } from "./editor.js";
 
 var xres, yres, canvas, txt;
 var keystate = [];
@@ -10,7 +13,14 @@ var keytrigs = new Set();
 var jsons = {};
 var models = {};
 var textures = {};
-var birdeye = false;
+
+let world;
+let state;
+
+const eflags = {
+  world: 0b1,
+  state: 0b10,
+};
 
 const ViewDistance = 6;
 
@@ -19,7 +29,24 @@ function step() {
 }
 
 function init() {
-  world = jsons["world"];
+
+  if (typeof sessionStorage.state !== "undefined") {
+    state = JSON.parse(sessionStorage.state);
+  }
+  else {
+    state = {
+      birdeye: false,
+      cameradir: 0,
+      camerarx: 0,
+      camerary: 0,
+      cameracell: "0 0 0",
+    };
+  }
+
+  if (typeof sessionStorage.world !== "undefined") {
+    world = JSON.parse(sessionStorage.world);
+  } else world = jsons["world"];
+
   if (world === undefined) {
     world = {
       "0 0 0": {
@@ -32,149 +59,12 @@ function init() {
   redraw();
 }
 
-function checkertexture(width, height, c) {
-  const size = width * height * 4;
-  const data = new Uint8Array(size);
-
-  const r = c >> 16;
-  const g = (c >> 8) & 255;
-  const b = c & 255;
-
-  let x = 0,
-    y = 0;
-
-  for (let i = 0; i < size; i += 4) {
-    const k = (((x >> 0) & 1) ^ ((y >> 0) & 1)) * 0.5 + 0.5;
-
-    data[i] = r * k;
-    data[i + 1] = g * k;
-    data[i + 2] = b * k;
-    data[i + 3] = 255;
-
-    x++;
-    if (x == width) {
-      x = 0;
-      y++;
-    }
-  }
-
-  // used the buffer to create a DataTexture
-  const texture = new THREE.DataTexture(data, width, height);
-  texture.needsUpdate = true;
-  return texture;
+function persist(key, value) {
+  //console.log("persisting ", key);
+  sessionStorage[key] = JSON.stringify(value);
 }
 
-const rHALF = Math.PI / 2.0;
-
-// TEH MASTERTABLE !!!
-
-const directions = [
-  {
-    // N
-    mov: [0, 0, +1],
-    movsxdx: [-1, 0, 0],
-    movupdw: [0, -1, 0],
-    mirr: [1, 1, -1],
-    mask: 0b000001,
-    oppo: 0b111101,
-    front: 0,
-    back: 1,
-    sx: 2,
-    dx: 3,
-    up: 5,
-    dw: 4,
-    rotx: 0,
-    roty: 0,
-  },
-  {
-    // S
-    mov: [0, 0, -1],
-    movsxdx: [1, 0, 0],
-    movupdw: [0, -1, 0],
-    mirr: [1, 1, -1],
-    mask: 0b000010,
-    oppo: 0b111110,
-    front: 1,
-    back: 0,
-    sx: 3,
-    dx: 2,
-    up: 5,
-    dw: 4,
-    rotx: 0,
-    roty: Math.PI,
-  },
-  {
-    // W
-    mov: [+1, 0, 0],
-    movsxdx: [0, 0, 1],
-    movupdw: [0, -1, 0],
-    mirr: [-1, 1, 1],
-    mask: 0b000100,
-    oppo: 0b110111,
-    front: 2,
-    back: 3,
-    sx: 1,
-    dx: 0,
-    up: 5,
-    dw: 4,
-    rotx: 0,
-    roty: +rHALF,
-  },
-  {
-    // E
-    mov: [-1, 0, 0],
-    movsxdx: [0, 0, -1],
-    movupdw: [0, -1, 0],
-    mirr: [-1, 1, 1],
-    mask: 0b001000,
-    oppo: 0b111011,
-    front: 3,
-    back: 2,
-    sx: 0,
-    dx: 1,
-    up: 5,
-    dw: 4,
-    rotx: 0,
-    roty: -rHALF,
-  },
-  {
-    // DW
-    mov: [0, +1, 0],
-    movsxdx: [-1, 0, 0],
-    movupdw: [0, 0, 1],
-    mirr: [1, -1, 1],
-    mask: 0b010000,
-    oppo: 0b011111,
-    front: 4,
-    back: 5,
-    sx: 0,
-    dx: 1,
-    up: 0,
-    dw: 4,
-    rotx: -rHALF,
-    roty: 0,
-  },
-  {
-    // UP
-    mov: [0, -1, 0],
-    movsxdx: [-1, 0, 0],
-    movupdw: [0, 0, -1],
-    mirr: [1, -1, 1],
-    mask: 0b100000,
-    oppo: 0b101111,
-    front: 5,
-    back: 4,
-    sx: 1,
-    dx: 0,
-    up: 5,
-    dw: 0,
-    rotx: +rHALF,
-    roty: 0,
-  },
-];
-
 let walls;
-let world;
 
 let scene, camera, renderer, raycaster;
 let orthoscene, orthocamera;
@@ -190,14 +80,6 @@ const pointer = new THREE.Vector2();
 let meshpool = {},
   meshindex = {},
   frame = 0;
-
-let cameradir = 0,
-  camerarx = 0,
-  camerary = 0,
-  cameracell = "0 0 0";
-
-let selcells = new Map();
-let selobjs = new Map();
 
 function getmesh(wallindex, dir, xp, yp, zp, mx, my, mz, offset, osxdx = 0, oupdw = 0) {
   let pool = meshpool[wallindex];
@@ -365,7 +247,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
 }
 
 function rerender() {
-  if (birdeye) {
+  if (state.birdeye) {
     camera.rotation.x = -rHALF;
     //camera.rotation.y = 0;
     camera.position.x = 0;
@@ -373,8 +255,8 @@ function rerender() {
     camera.position.z = 0;
     scene.fog.far = 1000;
   } else {
-    const dirx = directions[camerarx];
-    const diry = directions[camerary];
+    const dirx = directions[state.camerarx];
+    const diry = directions[state.camerary];
 
     camera.rotation.x = dirx.rotx;
     //camera.rotation.y = directions[camerary].roty;
@@ -383,7 +265,7 @@ function rerender() {
     camera.position.z = cameraoffset * diry.mov[2];
     scene.fog.far = ViewDistance - 1;
   }
-  camera.rotation.y = directions[camerary].roty;
+  camera.rotation.y = directions[state.camerary].roty;
   camera.rotation.order = "YXZ";
 
   renderer.autoClear = true;
@@ -396,12 +278,12 @@ function rerender() {
 }
 
 function redraw() {
-  cameradir = camerarx == 0 ? camerary : camerarx;
+  state.cameradir = state.camerarx == 0 ? state.camerary : state.camerarx;
 
-  const startmask = directions[cameradir].oppo; /* 0b111111 per audio scan */
+  const startmask = directions[state.cameradir].oppo; /* 0b111111 per audio scan */
 
   frame++;
-  scan(cameracell, startmask);
+  scan(state.cameracell, startmask);
 
   //console.log(meshpool);
   //console.log(meshindex);
@@ -417,244 +299,17 @@ function redraw() {
   rerender();
 }
 
-function toCellId(x, y, z) {
-  return x + " " + y + " " + z;
-}
-function toPosition(cellid) {
-  return cellid.split(" ").map((v) => Number(v));
-}
-
-function demolish(newid, newcell, cellid, cell, d) {
-  newcell.n[d.back] = cellid;
-  newcell.w[d.back] = 0;
-  cell.n[d.front] = newid;
-  cell.w[d.front] = 0;
-}
-
-function neighborId(cellid, d) {
-  const mov = d.mov;
-  const p = toPosition(cellid);
-  p[0] += mov[0];
-  p[1] += mov[1];
-  p[2] += mov[2];
-  return toCellId(p[0], p[1], p[2]);
-}
-
-function demolishMany(cellid, cell, mask) {
-  directions.forEach((d) => {
-    if (d.mask & mask) {
-      const newid = neighborId(cellid, d);
-      const newcell = world[newid];
-      if (newcell !== undefined) {
-        demolish(newid, newcell, cellid, cell, d);
-      }
-    }
-  });
-}
-
-function paint(cellid, dirid, wallid) {
-  const cell = world[cellid];
-  if (cell.n[dirid] == 0) {
-    cell.w[dirid] = cell.w[dirid] == wallid ? dirid + 1 : wallid;
-  }
-}
-
-//let nextObjId = 0;
-
-function spawn(cellid, dirid, slotid, wallid) {
-  const cell = world[cellid];
-  if (cell.n[dirid] == 0) {
-    let cello = cell.o;
-    if (cello === undefined) {
-      cello = [{}, {}, {}, {}, {}, {}];
-      cell.o = cello;
-    }
-    const objects = cello[dirid];
-    //const id = nextObjId++;
-    objects[slotid] = {
-      w: wallid,
-    };
-    //console.log(cell);
-  }
-}
-
-function push(cellid, dirid, bulldoze = true) {
-  const cell = world[cellid];
-  if (cell.n[dirid] == 0) {
-    const d = directions[dirid];
-    const newid = neighborId(cellid, d);
-    let newcell = world[newid];
-
-    if (newcell === undefined) {
-      newcell = {
-        n: [0, 0, 0, 0, 0, 0],
-        w: cell.w.map((v, i) => (v == 0 && cell.n[i] != 0 ? i + 1 : v)),
-      };
-      world[newid] = newcell;
-    }
-
-    demolish(newid, newcell, cellid, cell, d);
-    if (bulldoze) demolishMany(newid, newcell, d.oppo);
-
-    //console.log('dirid',dirid);
-    //console.log(world);
-  }
-}
-
-function movement(dirid) {
-  const cell = world[cameracell];
-  const next = cell.n[dirid];
-  if (next != 0) {
-    cameracell = next;
-    redraw();
-  }
-}
-
-function selOp(func) {
-  if (selcells.size > 0) {
-    selcells.forEach((selmask, cellid) => {
-      directions.forEach((d, dirid) => {
-        if (selmask & d.mask) func(cellid, dirid);
-      });
-    });
-    //selcells.clear();
-  } else {
-    func(cameracell, cameradir, false);
-  }
-}
-
-function selOpObj(func) {
-  if (selobjs.size > 0) {
-    selobjs.forEach((data, objid) => {
-      func(data, objid);
-    });
-    selobjs.clear();
-  }
-}
-
 function keydown(e) {
   if (keystate[e.keyCode]) return;
   keystate[e.keyCode] = true;
   keytrigs.add(e.keyCode);
   //console.log(e);
 
-  switch (e.keyCode) {
-    case 13: // ENTER
-    case 32: // SPACE
-      selOp((cellid, dirid) => push(cellid, dirid, !e.shiftKey));
-      redraw();
-      break;
-
-    case 8: // BACKSPACE
-      selcells.clear();
-      selobjs.clear();
-      redraw();
-      break;
-
-    case 37: // LEFTARROW
-    case 65: // A
-      if (e.shiftKey) movement(directions[cameradir].sx);
-      else {
-        camerary = directions[camerary].sx;
-        redraw();
-      }
-      break;
-
-    case 39: // RIGHTARROW
-    case 68: // D
-      if (e.shiftKey) movement(directions[cameradir].dx);
-      else {
-        camerary = directions[camerary].dx;
-        redraw();
-      }
-      break;
-
-    case 38: // UPARROW
-    case 87: // W
-      if (e.shiftKey) {
-        movement(directions[camerary].up);
-        redraw();
-      } else movement(directions[camerary].front);
-      break;
-
-    case 83: // S
-      if (e.metaKey || e.ctrlKey) {
-        e.preventDefault();
-        var dataStr =
-          "data:text/json;charset=utf-8," +
-          encodeURIComponent(JSON.stringify(world, (key, value) => (key === "scanvalue" ? undefined : value)));
-        var dlAnchorElem = document.getElementById("downloadAnchorElem");
-        dlAnchorElem.setAttribute("href", dataStr);
-        dlAnchorElem.setAttribute("download", "world.json");
-        dlAnchorElem.click();
-        break;
-      }
-    case 40: // DOWNARROW
-      if (e.shiftKey) {
-        movement(directions[camerary].dw);
-        redraw();
-      } else movement(directions[camerary].back);
-      break;
-
-    case 33: // PAGE UP
-    case 82: // R
-      camerarx = directions[camerarx].up;
-      redraw();
-      break;
-
-    case 34: // PAGE DOWN
-    case 70: // F
-      camerarx = directions[camerarx].dw;
-      redraw();
-      break;
-
-    case 77: // M
-      birdeye = !birdeye;
-      redraw();
-      break;
-
-    case 88: // X
-      selOp((cellid, dirid) => paint(cellid, dirid, "mirror"));
-      redraw();
-      break;
-
-    case 97: // numpad 1
-    case 98: // numpad 2
-    case 99: // numpad 3
-    case 100: // numpad 4
-    case 101: // numpad 5
-    case 102: // numpad 6
-    case 103: // numpad 7
-    case 104: // numpad 8
-    case 105: // numpad 9
-      selOp((cellid, dirid) => {
-        spawn(cellid, dirid, e.keyCode - 96, "cube");
-      });
-      redraw();
-      break;
-
-    case 49: // 1
-    case 50: // 2
-    case 51: // 3
-    case 52: // 4
-    case 53: // 5
-    case 54: // 6
-    case 55: // 7
-    case 56: // 8
-    case 57: // 9
-      selOp((cellid, dirid) => {
-        spawn(cellid, dirid, e.keyCode - 48, "cube");
-      });
-      redraw();
-      break;
-
-    case 46: // Delete
-      selOpObj((data, objid) => {
-        world[data.cellid].o[data.dirid][data.slotid] = undefined;
-      });
-      redraw();
-      break;
-  }
+  const res = editorhandler(e);
+  //console.log(res,eflags);
+  if (res & eflags.state) persist('state',state);
+  if (res & eflags.world) persist('world',world);
+  redraw();
 }
 function keyup(e) {
   keystate[e.keyCode] = false;
@@ -675,9 +330,8 @@ function onresize(e) {
   rrect = renderer.domElement.getBoundingClientRect();
 }
 
-
 function selectCell(e) {
-  pointer.x = ((e.clientX - rrect.left) / (rrect.bottom - rrect.top) /*(rrect.right - rrect.left)*/) * 2 - 1;
+  pointer.x = ((e.clientX - rrect.left) / (rrect.bottom - rrect.top)) /*(rrect.right - rrect.left)*/ * 2 - 1;
   pointer.y = -((e.clientY - rrect.top) / (rrect.bottom - rrect.top)) * 2 + 1;
 
   raycaster.setFromCamera(pointer, camera);
@@ -715,7 +369,7 @@ function selectCell(e) {
       // anchored objects
       if (dragging !== undefined) return;
       selcells.clear();
-      selobjs.set(data.objid, { ...data });
+      selobjs.set(data.objid, Object.assign({}, data));
       redraw();
     }
   }
@@ -740,7 +394,17 @@ function onmouseup(e) {
 }
 
 function onwheel(e) {
+  /*
   if (e.deltaY > 0) {
+  }*/
+}
+
+async function preload(as, suffix, callback) {
+  let elements = document.querySelectorAll('link[as="' + as + '"][href$="' + suffix + '"]');
+  for (let i = 0; i < elements.length; i++) {
+    let href = elements[i].attributes["href"].nodeValue;
+    let v = href.substring(5, href.length - suffix.length);
+    await callback(v, elements[i].href);
   }
 }
 
@@ -778,9 +442,8 @@ async function load() {
   raycaster = new THREE.Raycaster();
   raycaster.layers.set(1);
 
-  const loader = new GLTFLoader();
-
   /*
+  const loader = new GLTFLoader();
   for (let n of ["wall", "floor", "arch", "door"]) {
     const model = await loader.loadAsync("data/" + n + ".glb");
     models[n] = model.scene;
@@ -796,9 +459,9 @@ async function load() {
   });
 
   await preload("fetch", ".mp3", async (v, href) => {
-    const res = await fetch(href);
-    const buf = await res.arrayBuffer();
-    SFX.load(v, buf);
+    //const res = await fetch(href);
+    //const buf = await res.arrayBuffer();
+    //SFX.load(v, buf);
   });
 
   await preload("fetch", ".json", async (v, href) => {
@@ -811,7 +474,7 @@ async function load() {
 
   //console.log(textures);
 
-  const checker = checkertexture(128, 128, 0xffffff);
+  const checker = Procedural.checkertexture(128, 128, 0xffffff);
 
   let mats = {
     0: new THREE.MeshBasicMaterial({
@@ -890,12 +553,17 @@ async function load() {
   };
 
   for (const wallid in walls) {
-    const mesh = walls[wallid].mesh.clone();
+    const wall = walls[wallid];
+    const mesh = wall.mesh.clone();
     mesh.material = mats[0];
     walls["_" + wallid] = {
       type: -1,
       mesh: mesh,
     };
+    if (wall.type & wflags.object) {
+      mesh.geometry.computeBoundingBox();
+      wall.overtext = txt.toMesh(wallid, 0, 0, 0xffffff, true).translateZ(mesh.geometry.boundingBox.max.z);
+    }
   }
 
   const test = txt.toMesh("Testing123", 0, 4, 0xffff00);
@@ -925,3 +593,5 @@ async function load() {
 }
 
 window.addEventListener("load", load);
+
+export { world, state, eflags };
