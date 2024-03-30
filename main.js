@@ -247,6 +247,11 @@ const slots = [
   [spread, spread],
 ];
 
+const wflags = {
+  mirror: 0b1,
+  object: 0b01,
+};
+
 function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
   const posid = toCellId(xp, yp, zp);
   if (space[posid] == frame) return;
@@ -320,7 +325,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
     }
 
     if (dirmask & dir.mask) {
-      if (walls[wallindex].type == 1) {
+      if (walls[wallindex].type & wflags.mirror) {
         deferred.push(dirid);
       } else {
         let nextcell = cell.n[dirid];
@@ -382,7 +387,7 @@ function rerender() {
   camera.rotation.order = "YXZ";
 
   renderer.autoClear = true;
-  renderer.setViewport((xres - yres) / 2, 0, yres, yres);
+  renderer.setViewport(0, 0, yres, yres);
   renderer.render(scene, camera);
   //renderer.clearDepth();
   renderer.autoClear = false;
@@ -664,10 +669,16 @@ function keyup(e) {
 
 let dragging;
 
+let rrect;
+
+function onresize(e) {
+  rrect = renderer.domElement.getBoundingClientRect();
+}
+
+
 function selectCell(e) {
-  var rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((e.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
-  pointer.y = -((e.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
+  pointer.x = ((e.clientX - rrect.left) / (rrect.bottom - rrect.top) /*(rrect.right - rrect.left)*/) * 2 - 1;
+  pointer.y = -((e.clientY - rrect.top) / (rrect.bottom - rrect.top)) * 2 + 1;
 
   raycaster.setFromCamera(pointer, camera);
   const intersects = raycaster.intersectObjects(scene.children, false);
@@ -857,16 +868,16 @@ async function load() {
     number8: { type: 0, mesh: txt.toMesh("8", 0, 0, 0xf8f8f8) },
     number9: { type: 0, mesh: txt.toMesh("9", 0, 0, 0xffffff) },
     mirror: {
-      type: 1,
+      type: wflags.mirror,
       mesh: new THREE.Mesh(plane, mats.checker),
     },
     pool: {
-      type: 1,
+      type: wflags.mirror,
       mesh: new THREE.Mesh(pooly, mats.pool),
     },
     //txt.toMesh("?", 0, 0, 0xffffff),
     cube: {
-      type: 2,
+      type: wflags.object,
       mesh: new THREE.Mesh(new THREE.BoxGeometry().translate(0, 0, 0.5).scale(objsize, objsize, objsize), [
         mats[3],
         mats[4],
@@ -906,6 +917,8 @@ async function load() {
   canvas.addEventListener("mouseup", onmouseup);
   canvas.addEventListener("mousemove", onmousemove);
   canvas.addEventListener("wheel", onwheel);
+  window.addEventListener("resize", onresize);
+  onresize();
 
   init();
   //window.requestAnimationFrame(step);

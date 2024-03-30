@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 
 function TXT(map, font, scale) {
   const indices = [0, 2, 1, 0, 3, 2];
@@ -44,7 +45,7 @@ function TXT(map, font, scale) {
     g.geometry = geometry;
   });
 
-  function toMesh(text, xo, yo, color) {
+  function toMesh(text, xo, yo, color, centered=false) {
     let material = materials[color];
     if (material === undefined) {
       material = new THREE.MeshBasicMaterial({ map, color });
@@ -54,11 +55,19 @@ function TXT(map, font, scale) {
       materials[color] = material;
     }
 
-    const group = new THREE.Group();
+    let xoff = 0;
+    if (centered)
+    {
+      for (let i = 0; i < text.length; i++) {
+        const c = text.charCodeAt(i);
+        const g = font.glyphs[c - 32];
+        xoff += g.xadvance;
+      }  
+      xoff /= 2;
+    }
 
-    const matrix = new THREE.Matrix4();
-
-    let x = xo,
+    const group = [];
+    let x = xo+xoff,
       y = yo + font.baseline;
     for (let i = 0; i < text.length; i++) {
       const c = text.charCodeAt(i);
@@ -66,17 +75,13 @@ function TXT(map, font, scale) {
 
       if (c == 10) {
         y += font.height;
-        x = xo;
+        x = xo+xoff;
       } else {
-        const mesh = new THREE.Mesh(g.geometry, material);
-        mesh.position.x = x;
-        mesh.position.y = y;
-        group.add(mesh);
-
+        group.push(g.geometry.clone().translate(x, y, 0));
         x += g.xadvance;
       }
     }
-    return group;
+    return new THREE.Mesh(BufferGeometryUtils.mergeGeometries(group,false),material);
   }
 
   return { toMesh };
