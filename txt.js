@@ -63,7 +63,7 @@ function TXT(map, font, scale) {
         const g = font.glyphs[c - 32];
         xoff += g.xadvance;
       }  
-      xoff /= 2;
+      xoff /= -2;
     }
 
     const group = [];

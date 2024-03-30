@@ -131,7 +131,7 @@ const slots = [
 
 const wflags = {
   mirror: 0b1,
-  object: 0b01,
+  object: 0b10,
 };
 
 function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
@@ -195,6 +195,19 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
           userData.slotid = slotid;
           userData.objid = cellid + " " + dirid + " " + slotid;
 
+          const overtext = walls["__" + obj.w];
+          if (overtext !== undefined && xp<2 && yp<2 && zp<2 && xp>-2 && yp>-2 && zp>-2)
+          {
+            //console.log('overtext');
+            const bb = walls[obj.w].mesh.geometry.boundingBox.max;
+        
+            const mesh = getmesh("__" + obj.w, dir, xp, yp, zp, mx, my, mz, 0.5 - bb.z * 1.1, slot[0], slot[1]);
+            mesh.layers.disable(1);
+            //mesh.lookAt(camera.position);
+            mesh.quaternion.copy(camera.quaternion);
+            
+          }
+
           if (selobjs.has(userData.objid)) {
             const mesh = getmesh("_" + obj.w, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
             mesh.scale.x *= 1.1;
@@ -247,6 +260,17 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
 }
 
 function rerender() {
+  renderer.autoClear = true;
+  renderer.setViewport(0, 0, yres, yres);
+  renderer.render(scene, camera);
+  //renderer.clearDepth();
+  renderer.autoClear = false;
+  renderer.setViewport(0, 0, xres, yres);
+  renderer.render(orthoscene, orthocamera);
+}
+
+function redraw() {
+
   if (state.birdeye) {
     camera.rotation.x = -rHALF;
     //camera.rotation.y = 0;
@@ -268,16 +292,6 @@ function rerender() {
   camera.rotation.y = directions[state.camerary].roty;
   camera.rotation.order = "YXZ";
 
-  renderer.autoClear = true;
-  renderer.setViewport(0, 0, yres, yres);
-  renderer.render(scene, camera);
-  //renderer.clearDepth();
-  renderer.autoClear = false;
-  renderer.setViewport(0, 0, xres, yres);
-  renderer.render(orthoscene, orthocamera);
-}
-
-function redraw() {
   state.cameradir = state.camerarx == 0 ? state.camerary : state.camerarx;
 
   const startmask = directions[state.cameradir].oppo; /* 0b111111 per audio scan */
@@ -369,6 +383,7 @@ function selectCell(e) {
       // anchored objects
       if (dragging !== undefined) return;
       selcells.clear();
+      selobjs.clear();
       selobjs.set(data.objid, Object.assign({}, data));
       redraw();
     }
@@ -562,11 +577,21 @@ async function load() {
     };
     if (wall.type & wflags.object) {
       mesh.geometry.computeBoundingBox();
-      wall.overtext = txt.toMesh(wallid, 0, 0, 0xffffff, true).translateZ(mesh.geometry.boundingBox.max.z);
+      console.log(mesh.geometry.boundingBox);
+      const tmesh = txt.toMesh(wallid, 0, 0, 0xffffff, true);
+      tmesh.geometry.scale(1 / 128, 1 / 128, 1)
+       // .translate(0, 0, mesh.geometry.boundingBox.max.z*1.1);
+      //tmesh.position.z = mesh.geometry.boundingBox.max.z;
+ 
+      walls["__" + wallid] =
+      {
+        type: -1,
+        mesh: tmesh
+      }
     }
   }
 
-  const test = txt.toMesh("Testing123", 0, 4, 0xffff00);
+  const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
 
   test.scale.x = 2;
   test.scale.y = 2;
@@ -574,8 +599,8 @@ async function load() {
   test.rotation.x = -rHALF;
   test.position.y -= 0.49;
   */
-  //test.position.x = xres / 2;
-  //test.position.y = yres / 2;
+  test.position.x = yres;
+  test.position.y = yres-8;
   orthoscene.add(test);
   orthoscene.add(walls["cube"].mesh.clone());
 
