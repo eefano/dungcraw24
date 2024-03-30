@@ -179,8 +179,12 @@ let world;
 let scene, camera, renderer, raycaster;
 let orthoscene, orthocamera;
 
+const fov = 90;
+const cameraoffset = 0.203;
+/*
 const fov = 109.15;
-
+const cameraoffset = 0.25;
+*/
 const pointer = new THREE.Vector2();
 
 let meshpool = {},
@@ -195,7 +199,7 @@ let cameradir = 0,
 let selcells = new Map();
 let selobjs = new Map();
 
-function getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, offset, osxdx = 0, oupdw = 0) {
+function getmesh(wallindex, dir, xp, yp, zp, mx, my, mz, offset, osxdx = 0, oupdw = 0) {
   let pool = meshpool[wallindex];
   if (pool === undefined) {
     pool = [];
@@ -205,8 +209,7 @@ function getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, offset, osxdx =
   let mesh;
 
   if (index == pool.length) {
-    mesh = walls[wallindex].clone();
-    //mesh.userData = {};
+    mesh = walls[wallindex].mesh.clone();
     pool.push(mesh);
     scene.add(mesh);
   } else {
@@ -264,7 +267,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
       // RENDER WALL
       if (wallindex != 0) {
         //console.log('dirid', dirid, 'wall', wallindex, 'level', level,'frame',frame,'sv',sv);
-        const mesh = getmesh(wallindex, cellid, dir, xp, yp, zp, mx, my, mz, 0.5);
+        const mesh = getmesh(wallindex, dir, xp, yp, zp, mx, my, mz, 0.5);
         mesh.layers.enable(1);
         mesh.userData.type = 0;
         mesh.userData.cellid = cellid;
@@ -272,7 +275,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
 
         /*
         if (level > 0) {
-          const test = getmesh("number" + level, cellid, dir, xp, yp, zp, mx, my, mz, 0.48);
+          const test = getmesh("number" + level, dir, xp, yp, zp, mx, my, mz, 0.48);
           //test.position.y = -0.49;
           test.scale.x = 1 / 8;
           test.scale.y = 1 / 8;
@@ -280,7 +283,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
         */
 
         if (selected !== undefined && selected & dir.mask) {
-          const mesh = getmesh("_" + wallindex, cellid, dir, xp, yp, zp, mx, my, mz, 0.49);
+          const mesh = getmesh("_" + wallindex, dir, xp, yp, zp, mx, my, mz, 0.49);
           mesh.layers.disable(1);
           mesh.scale.x *= 0.9;
           mesh.scale.y *= 0.9;
@@ -296,7 +299,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
         const obj = objs[slotid];
         if (obj !== undefined) {
           const slot = slots[slotid];
-          const mesh = getmesh(obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
+          const mesh = getmesh(obj.w, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
           mesh.layers.enable(1);
           const userData = mesh.userData;
           userData.type = 1;
@@ -306,7 +309,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
           userData.objid = cellid + " " + dirid + " " + slotid;
 
           if (selobjs.has(userData.objid)) {
-            const mesh = getmesh("_" + obj.w, cellid, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
+            const mesh = getmesh("_" + obj.w, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
             mesh.scale.x *= 1.1;
             mesh.scale.y *= 1.1;
             mesh.scale.z *= 1.1;
@@ -317,7 +320,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
     }
 
     if (dirmask & dir.mask) {
-      if (wallindex == "mirror") {
+      if (walls[wallindex].type == 1) {
         deferred.push(dirid);
       } else {
         let nextcell = cell.n[dirid];
@@ -360,14 +363,19 @@ function rerender() {
   if (birdeye) {
     camera.rotation.x = -rHALF;
     //camera.rotation.y = 0;
+    camera.position.x = 0;
     camera.position.y = 4;
+    camera.position.z = 0;
     scene.fog.far = 1000;
   } else {
-    camera.rotation.x = directions[camerarx].rotx;
+    const dirx = directions[camerarx];
+    const diry = directions[camerary];
+
+    camera.rotation.x = dirx.rotx;
     //camera.rotation.y = directions[camerary].roty;
-    camera.position.y = 0;
-    camera.position.x = 0;
-    camera.position.z = 0;
+    camera.position.x = cameraoffset * diry.mov[0];
+    camera.position.y = cameraoffset * dirx.mov[1];
+    camera.position.z = cameraoffset * diry.mov[2];
     scene.fog.far = ViewDistance - 1;
   }
   camera.rotation.y = directions[camerary].roty;
@@ -720,6 +728,11 @@ function onmouseup(e) {
   }
 }
 
+function onwheel(e) {
+  if (e.deltaY > 0) {
+  }
+}
+
 async function load() {
   canvas = document.getElementById("gamecanvas");
   xres = canvas.width;
@@ -771,30 +784,6 @@ async function load() {
     textures[v] = t;
   });
 
-  //console.log(textures);
-
-  const checker = checkertexture(128, 128, 0xffffff);
-
-  let materials = [
-    new THREE.MeshBasicMaterial({
-      wireframe: true,
-      color: 0xffffff,
-      fog: false,
-    }),
-    new THREE.MeshBasicMaterial({ map: textures.n, color: 0xffff00 }),
-    new THREE.MeshBasicMaterial({ map: textures.s, color: 0xafaf00 }),
-    new THREE.MeshBasicMaterial({ map: textures.w, color: 0x00ffff }),
-    new THREE.MeshBasicMaterial({ map: textures.e, color: 0x00afaf }),
-    new THREE.MeshBasicMaterial({ map: textures.dw, color: 0xff00ff }),
-    new THREE.MeshBasicMaterial({ map: textures.up, color: 0xaf00af }),
-    new THREE.MeshBasicMaterial({ map: textures.up, color: 0xc0c0c0 }),
-  ];
-
-  let geometries = [
-    new THREE.PlaneGeometry(1, 1, 5, 5), //.translate(0, 0, -0.49),
-    new THREE.PlaneGeometry(1, 1, 1, 1), //.translate(0, 0, -0.5),
-  ];
-
   await preload("fetch", ".mp3", async (v, href) => {
     const res = await fetch(href);
     const buf = await res.arrayBuffer();
@@ -809,50 +798,93 @@ async function load() {
 
   txt = TXT(textures["gamefonto"], jsons["gamefont"], 64);
 
+  //console.log(textures);
+
+  const checker = checkertexture(128, 128, 0xffffff);
+
+  let mats = {
+    0: new THREE.MeshBasicMaterial({
+      wireframe: true,
+      color: 0xffffff,
+      fog: false,
+    }),
+    1: new THREE.MeshBasicMaterial({ map: textures.n, color: 0xffff00 }),
+    2: new THREE.MeshBasicMaterial({ map: textures.s, color: 0xafaf00 }),
+    3: new THREE.MeshBasicMaterial({ map: textures.w, color: 0x00ffff }),
+    4: new THREE.MeshBasicMaterial({ map: textures.e, color: 0x00afaf }),
+    5: new THREE.MeshBasicMaterial({ map: textures.dw, color: 0xff00ff }),
+    6: new THREE.MeshBasicMaterial({ map: textures.up, color: 0xaf00af }),
+    black: new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    checker: new THREE.MeshBasicMaterial({
+      map: checker,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.2,
+      forceSinglePass: true,
+    }),
+    pool: new THREE.MeshBasicMaterial({
+      color: 0x8080ff,
+      transparent: true,
+      opacity: 0.8,
+      forceSinglePass: true,
+    }),
+  };
+
+  const plane = new THREE.PlaneGeometry();
+  const pooly = new THREE.PlaneGeometry().translate(0, 0, -0.1);
+  const floor = new THREE.BoxGeometry().scale(1, 1, 0.1).translate(0, 0, -0.05);
+
   walls = {
-    0: new THREE.Mesh(geometries[0], materials[0]),
-    1: new THREE.Mesh(geometries[1], materials[1]),
-    2: new THREE.Mesh(geometries[1], materials[2]),
-    3: new THREE.Mesh(geometries[1], materials[3]),
-    4: new THREE.Mesh(geometries[1], materials[4]),
-    5: new THREE.Mesh(geometries[1], materials[5]),
-    6: new THREE.Mesh(geometries[1], materials[6]),
-    7: new THREE.Mesh(geometries[1], materials[7]),
-    number0: txt.toMesh("0", 0, 0, 0xa8a8a8),
-    number1: txt.toMesh("1", 0, 0, 0xb0b0b0),
-    number2: txt.toMesh("2", 0, 0, 0xb8b8b8),
-    number3: txt.toMesh("3", 0, 0, 0xc0c0c0),
-    number4: txt.toMesh("4", 0, 0, 0xc8c8c8),
-    number5: txt.toMesh("5", 0, 0, 0xd0d0d0),
-    number6: txt.toMesh("6", 0, 0, 0xd8d8d8),
-    number7: txt.toMesh("7", 0, 0, 0xf0f0f0),
-    number8: txt.toMesh("8", 0, 0, 0xf8f8f8),
-    number9: txt.toMesh("9", 0, 0, 0xffffff),
-    mirror: new THREE.Mesh(
-      geometries[1],
-      new THREE.MeshBasicMaterial({
-        map: checker,
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.2,
-        forceSinglePass: true,
-      })
-    ),
+    0: { type: 0, mesh: new THREE.Mesh(plane, mats[0]) },
+    1: { type: 0, mesh: new THREE.Mesh(plane, mats[1]) },
+    2: { type: 0, mesh: new THREE.Mesh(plane, mats[2]) },
+    3: { type: 0, mesh: new THREE.Mesh(plane, mats[3]) },
+    4: { type: 0, mesh: new THREE.Mesh(plane, mats[4]) },
+    5: { type: 0, mesh: new THREE.Mesh(plane, mats[5]) },
+    alt5: {
+      type: 0,
+      mesh: new THREE.Mesh(floor, [mats.black, mats.black, mats.black, mats.black, mats[5], mats.black]),
+    },
+    6: { type: 0, mesh: new THREE.Mesh(plane, mats[6]) },
+    number0: { type: 0, mesh: txt.toMesh("0", 0, 0, 0xa8a8a8) },
+    number1: { type: 0, mesh: txt.toMesh("1", 0, 0, 0xb0b0b0) },
+    number2: { type: 0, mesh: txt.toMesh("2", 0, 0, 0xb8b8b8) },
+    number3: { type: 0, mesh: txt.toMesh("3", 0, 0, 0xc0c0c0) },
+    number4: { type: 0, mesh: txt.toMesh("4", 0, 0, 0xc8c8c8) },
+    number5: { type: 0, mesh: txt.toMesh("5", 0, 0, 0xd0d0d0) },
+    number6: { type: 0, mesh: txt.toMesh("6", 0, 0, 0xd8d8d8) },
+    number7: { type: 0, mesh: txt.toMesh("7", 0, 0, 0xf0f0f0) },
+    number8: { type: 0, mesh: txt.toMesh("8", 0, 0, 0xf8f8f8) },
+    number9: { type: 0, mesh: txt.toMesh("9", 0, 0, 0xffffff) },
+    mirror: {
+      type: 1,
+      mesh: new THREE.Mesh(plane, mats.checker),
+    },
+    pool: {
+      type: 1,
+      mesh: new THREE.Mesh(pooly, mats.pool),
+    },
     //txt.toMesh("?", 0, 0, 0xffffff),
-    cube: new THREE.Mesh(new THREE.BoxGeometry().translate(0, 0, 0.5).scale(objsize, objsize, objsize), [
-      materials[3],
-      materials[4],
-      materials[2],
-      materials[1],
-      materials[5],
-      materials[6],
-    ]),
+    cube: {
+      type: 2,
+      mesh: new THREE.Mesh(new THREE.BoxGeometry().translate(0, 0, 0.5).scale(objsize, objsize, objsize), [
+        mats[3],
+        mats[4],
+        mats[2],
+        mats[1],
+        mats[5],
+        mats[6],
+      ]),
+    },
   };
 
   for (const wallid in walls) {
-    const mesh = walls[wallid].clone();
-    mesh.material = materials[0];
-    walls["_" + wallid] = mesh;
+    const mesh = walls[wallid].mesh.clone();
+    mesh.material = mats[0];
+    walls["_" + wallid] = {
+      type: -1,
+      mesh: mesh,
+    };
   }
 
   const test = txt.toMesh("Testing123", 0, 4, 0xffff00);
@@ -866,13 +898,14 @@ async function load() {
   //test.position.x = xres / 2;
   //test.position.y = yres / 2;
   orthoscene.add(test);
-  orthoscene.add(walls["cube"].clone());
+  orthoscene.add(walls["cube"].mesh.clone());
 
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
   canvas.addEventListener("mousedown", onmousedown);
   canvas.addEventListener("mouseup", onmouseup);
   canvas.addEventListener("mousemove", onmousemove);
+  canvas.addEventListener("wheel", onwheel);
 
   init();
   //window.requestAnimationFrame(step);
