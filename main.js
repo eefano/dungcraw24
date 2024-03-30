@@ -3,24 +3,19 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import { TXT } from "./txt.js";
 import { rHALF, directions } from "./tables.js";
-import * as Procedural from "./procedural.js";
-import { editorhandler, toCellId, selcells, selobjs } from "./editor.js";
+import { eflags, editorkeydown, editorwheel, toCellId, selcells, selobjs } from "./editor.js";
+import { walls, buildwalls, wflags } from "./walls.js";
 
 var xres, yres, canvas, txt;
 var keystate = [];
 var keytrigs = new Set();
 
 var jsons = {};
-var models = {};
 var textures = {};
 
 let world;
 let state;
-
-const eflags = {
-  world: 0b1,
-  state: 0b10,
-};
+let editing = true;
 
 const ViewDistance = 6;
 
@@ -29,11 +24,9 @@ function step() {
 }
 
 function init() {
-
   if (typeof sessionStorage.state !== "undefined") {
     state = JSON.parse(sessionStorage.state);
-  }
-  else {
+  } else {
     state = {
       birdeye: false,
       cameradir: 0,
@@ -63,8 +56,12 @@ function persist(key, value) {
   //console.log("persisting ", key);
   sessionStorage[key] = JSON.stringify(value);
 }
+function checkPersist(res) {
+  if (res & eflags.state) persist("state", state);
+  if (res & eflags.world) persist("world", world);
 
-let walls;
+  if (res != 0) redraw();
+}
 
 let scene, camera, renderer, raycaster;
 let orthoscene, orthocamera;
@@ -114,7 +111,6 @@ function getmesh(wallindex, dir, xp, yp, zp, mx, my, mz, offset, osxdx = 0, oupd
 const ViewDistanceSquared = ViewDistance * ViewDistance;
 const space = {};
 const spread = 0.38;
-const objsize = 0.15;
 
 const slots = [
   0,
@@ -128,11 +124,6 @@ const slots = [
   [0, spread],
   [spread, spread],
 ];
-
-const wflags = {
-  mirror: 0b1,
-  object: 0b10,
-};
 
 function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
   const posid = toCellId(xp, yp, zp);
@@ -156,7 +147,7 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
         //console.log('dirid', dirid, 'wall', wallindex, 'level', level,'frame',frame,'sv',sv);
         const mesh = getmesh(wallindex, dir, xp, yp, zp, mx, my, mz, 0.5);
         mesh.layers.enable(1);
-        mesh.userData.type = 0;
+        mesh.userData.wallid = wallindex;
         mesh.userData.cellid = cellid;
         mesh.userData.dirmask = dir.mask;
 
@@ -189,23 +180,21 @@ function scan(cellid, dirmask, xp = 0, yp = 0, zp = 0, mx = 1, my = 1, mz = 1) {
           const mesh = getmesh(obj.w, dir, xp, yp, zp, mx, my, mz, 0.5, slot[0], slot[1]);
           mesh.layers.enable(1);
           const userData = mesh.userData;
-          userData.type = 1;
+          userData.wallid = obj.w;
           userData.cellid = cellid;
           userData.dirid = dirid;
           userData.slotid = slotid;
           userData.objid = cellid + " " + dirid + " " + slotid;
 
           const overtext = walls["__" + obj.w];
-          if (overtext !== undefined && xp<2 && yp<2 && zp<2 && xp>-2 && yp>-2 && zp>-2)
-          {
+          if (overtext !== undefined && xp < 2 && yp < 2 && zp < 2 && xp > -2 && yp > -2 && zp > -2) {
             //console.log('overtext');
             const bb = walls[obj.w].mesh.geometry.boundingBox.max;
-        
+
             const mesh = getmesh("__" + obj.w, dir, xp, yp, zp, mx, my, mz, 0.5 - bb.z * 1.1, slot[0], slot[1]);
             mesh.layers.disable(1);
             //mesh.lookAt(camera.position);
             mesh.quaternion.copy(camera.quaternion);
-            
           }
 
           if (selobjs.has(userData.objid)) {
@@ -270,7 +259,6 @@ function rerender() {
 }
 
 function redraw() {
-
   if (state.birdeye) {
     camera.rotation.x = -rHALF;
     //camera.rotation.y = 0;
@@ -319,11 +307,8 @@ function keydown(e) {
   keytrigs.add(e.keyCode);
   //console.log(e);
 
-  const res = editorhandler(e);
+  if (editing) checkPersist(editorkeydown(e));
   //console.log(res,eflags);
-  if (res & eflags.state) persist('state',state);
-  if (res & eflags.world) persist('world',world);
-  redraw();
 }
 function keyup(e) {
   keystate[e.keyCode] = false;
@@ -355,8 +340,9 @@ function selectCell(e) {
     const o = intersects[0].object;
     const data = o.userData;
     //console.log("data", data);
+    const wall = walls[data.wallid];
 
-    if (data.type == 0) {
+    if (wall.type & wflags.wall) {
       // WALL
       selobjs.clear();
 
@@ -379,7 +365,7 @@ function selectCell(e) {
       //console.log(selcells);
       redraw();
       return [dirmask, sel & dirmask];
-    } else if (data.type == 1) {
+    } else if (wall.type & wflags.object) {
       // anchored objects
       if (dragging !== undefined) return;
       selcells.clear();
@@ -409,9 +395,7 @@ function onmouseup(e) {
 }
 
 function onwheel(e) {
-  /*
-  if (e.deltaY > 0) {
-  }*/
+  if (editing) checkPersist(editorwheel(e));
 }
 
 async function preload(as, suffix, callback) {
@@ -489,107 +473,7 @@ async function load() {
 
   //console.log(textures);
 
-  const checker = Procedural.checkertexture(128, 128, 0xffffff);
-
-  let mats = {
-    0: new THREE.MeshBasicMaterial({
-      wireframe: true,
-      color: 0xffffff,
-      fog: false,
-    }),
-    1: new THREE.MeshBasicMaterial({ map: textures.n, color: 0xffff00 }),
-    2: new THREE.MeshBasicMaterial({ map: textures.s, color: 0xafaf00 }),
-    3: new THREE.MeshBasicMaterial({ map: textures.w, color: 0x00ffff }),
-    4: new THREE.MeshBasicMaterial({ map: textures.e, color: 0x00afaf }),
-    5: new THREE.MeshBasicMaterial({ map: textures.dw, color: 0xff00ff }),
-    6: new THREE.MeshBasicMaterial({ map: textures.up, color: 0xaf00af }),
-    black: new THREE.MeshBasicMaterial({ color: 0x000000 }),
-    checker: new THREE.MeshBasicMaterial({
-      map: checker,
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.2,
-      forceSinglePass: true,
-    }),
-    pool: new THREE.MeshBasicMaterial({
-      color: 0x8080ff,
-      transparent: true,
-      opacity: 0.8,
-      forceSinglePass: true,
-    }),
-  };
-
-  const plane = new THREE.PlaneGeometry();
-  const pooly = new THREE.PlaneGeometry().translate(0, 0, -0.1);
-  const floor = new THREE.BoxGeometry().scale(1, 1, 0.1).translate(0, 0, -0.05);
-
-  walls = {
-    0: { type: 0, mesh: new THREE.Mesh(plane, mats[0]) },
-    1: { type: 0, mesh: new THREE.Mesh(plane, mats[1]) },
-    2: { type: 0, mesh: new THREE.Mesh(plane, mats[2]) },
-    3: { type: 0, mesh: new THREE.Mesh(plane, mats[3]) },
-    4: { type: 0, mesh: new THREE.Mesh(plane, mats[4]) },
-    5: { type: 0, mesh: new THREE.Mesh(plane, mats[5]) },
-    alt5: {
-      type: 0,
-      mesh: new THREE.Mesh(floor, [mats.black, mats.black, mats.black, mats.black, mats[5], mats.black]),
-    },
-    6: { type: 0, mesh: new THREE.Mesh(plane, mats[6]) },
-    number0: { type: 0, mesh: txt.toMesh("0", 0, 0, 0xa8a8a8) },
-    number1: { type: 0, mesh: txt.toMesh("1", 0, 0, 0xb0b0b0) },
-    number2: { type: 0, mesh: txt.toMesh("2", 0, 0, 0xb8b8b8) },
-    number3: { type: 0, mesh: txt.toMesh("3", 0, 0, 0xc0c0c0) },
-    number4: { type: 0, mesh: txt.toMesh("4", 0, 0, 0xc8c8c8) },
-    number5: { type: 0, mesh: txt.toMesh("5", 0, 0, 0xd0d0d0) },
-    number6: { type: 0, mesh: txt.toMesh("6", 0, 0, 0xd8d8d8) },
-    number7: { type: 0, mesh: txt.toMesh("7", 0, 0, 0xf0f0f0) },
-    number8: { type: 0, mesh: txt.toMesh("8", 0, 0, 0xf8f8f8) },
-    number9: { type: 0, mesh: txt.toMesh("9", 0, 0, 0xffffff) },
-    mirror: {
-      type: wflags.mirror,
-      mesh: new THREE.Mesh(plane, mats.checker),
-    },
-    pool: {
-      type: wflags.mirror,
-      mesh: new THREE.Mesh(pooly, mats.pool),
-    },
-    //txt.toMesh("?", 0, 0, 0xffffff),
-    cube: {
-      type: wflags.object,
-      mesh: new THREE.Mesh(new THREE.BoxGeometry().translate(0, 0, 0.5).scale(objsize, objsize, objsize), [
-        mats[3],
-        mats[4],
-        mats[2],
-        mats[1],
-        mats[5],
-        mats[6],
-      ]),
-    },
-  };
-
-  for (const wallid in walls) {
-    const wall = walls[wallid];
-    const mesh = wall.mesh.clone();
-    mesh.material = mats[0];
-    walls["_" + wallid] = {
-      type: -1,
-      mesh: mesh,
-    };
-    if (wall.type & wflags.object) {
-      mesh.geometry.computeBoundingBox();
-      console.log(mesh.geometry.boundingBox);
-      const tmesh = txt.toMesh(wallid, 0, 0, 0xffffff, true);
-      tmesh.geometry.scale(1 / 128, 1 / 128, 1)
-       // .translate(0, 0, mesh.geometry.boundingBox.max.z*1.1);
-      //tmesh.position.z = mesh.geometry.boundingBox.max.z;
- 
-      walls["__" + wallid] =
-      {
-        type: -1,
-        mesh: tmesh
-      }
-    }
-  }
+  buildwalls(textures, txt);
 
   const test = txt.toMesh("Testing123", 0, 0, 0xffff00);
 
@@ -600,7 +484,7 @@ async function load() {
   test.position.y -= 0.49;
   */
   test.position.x = yres;
-  test.position.y = yres-8;
+  test.position.y = yres - 8;
   orthoscene.add(test);
   orthoscene.add(walls["cube"].mesh.clone());
 
@@ -619,4 +503,4 @@ async function load() {
 
 window.addEventListener("load", load);
 
-export { world, state, eflags };
+export { world, state };

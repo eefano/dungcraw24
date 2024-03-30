@@ -4,9 +4,10 @@ My alleged submission to the Dungeon Crawler Game Jam 2024
 
 Controls (work in progress)
 
-- Mouseclick: select/unselect wall, click and drag to select nearby walls
-- Space / enter: make room by pushing the selected walls,
-    if no selection are made, an alcove gets created in the wall in front
+- Mouseclick: select/unselect wall or objects, click and drag to select nearby walls
+- Mousewheel: cycle through selected walls or objects styles
+- Space/enter: make room by pushing the selected walls,
+- Shift + Space/Enter: like push, but an alcove gets created (lateral walls are preserved)
 - W/UPARROW : go forwards 
 - S/DOWNARROW : go bacwards
 - A/LEFTARROW : turn left
@@ -19,7 +20,7 @@ Controls (work in progress)
 - F/PAGE DOWN: look down
 - X : put a mirror on the wall you're facing
 - M : toggle bird-eye view
-- Numpad 1-9 : place an object on the selected wall
+- Numpad 1-9 : toggle an object on the selected wall 
 - Delete : delete selected object
 
 

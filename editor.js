@@ -1,8 +1,14 @@
-import { world, state, eflags } from "./main.js";
+import { world, state } from "./main.js";
 import { directions } from "./tables.js";
+import { linked_walls, linked_objects } from "./walls.js";
 
 let selcells = new Map();
 let selobjs = new Map();
+
+const eflags = {
+  world: 0b1,
+  state: 0b10,
+};
 
 function toCellId(x, y, z) {
   return x + " " + y + " " + z;
@@ -120,7 +126,7 @@ function selOpObj(func) {
     selobjs.forEach((data, objid) => {
       res |= func(data, objid);
     });
-    selobjs.clear();
+    //selobjs.clear();
     return res;
   }
   return 0;
@@ -134,7 +140,7 @@ function movement(dirid) {
   }
 }
 
-function editorhandler(e) {
+function editorkeydown(e) {
   switch (e.keyCode) {
     case 13: // ENTER
     case 32: // SPACE
@@ -219,16 +225,39 @@ function editorhandler(e) {
     case 57: // 9
       return selOp((cellid, dirid) => spawn(cellid, dirid, e.keyCode - 48, "cube"));
 
-    /*
     case 46: // Delete
       return selOpObj((data, objid) => {
         world[data.cellid].o[data.dirid][data.slotid] = undefined;
         return eflags.world;
       });
-      */
   }
 
   return 0;
 }
 
-export { eflags, editorhandler, toCellId, selcells, selobjs };
+function cycle(e, linkedlist, actualvalue) {
+  if (e.deltaY > 0) return linkedlist[actualvalue].next;
+  else return linkedlist[actualvalue].prev;
+}
+
+function editorwheel(e) {
+  if (selcells.size > 0) {
+    return selOp((cellid, dirid) => {
+      world[cellid].w[dirid] = cycle(e, linked_walls, world[cellid].w[dirid]);
+      return eflags.world;
+    });
+  } else if (selobjs.size > 0) {
+    return selOpObj((data, objid) => {
+      //console.log(data);
+      world[data.cellid].o[data.dirid][data.slotid].w = cycle(
+        e,
+        linked_objects,
+        world[data.cellid].o[data.dirid][data.slotid].w
+      );
+      return eflags.world;
+    });
+  }
+  return 0;
+}
+
+export { eflags, editorkeydown, editorwheel, toCellId, selcells, selobjs };
