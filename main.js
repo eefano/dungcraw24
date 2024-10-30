@@ -1,5 +1,5 @@
 import WebGL from "three/addons/capabilities/WebGL.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+//import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import { TXT } from "./txt.js";
 import { rHALF, directions } from "./tables.js";
@@ -402,7 +402,9 @@ async function preload(as, suffix, callback) {
   let elements = document.querySelectorAll('link[as="' + as + '"][href$="' + suffix + '"]');
   for (let i = 0; i < elements.length; i++) {
     let href = elements[i].attributes["href"].nodeValue;
-    let v = href.substring(5, href.length - suffix.length);
+    let x = href.lastIndexOf("/") + 1;
+    let v = href.substring(x, href.length - suffix.length);
+    console.log(x,v, href);
     await callback(v, elements[i].href);
   }
 }

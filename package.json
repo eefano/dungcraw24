@@ -1,0 +1,21 @@
+{
+  "name": "dungcraw24",
+  "version": "1.0.0",
+  "description": "My alleged submission to the Dungeon Crawler Game Jam 2024",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite", 
+    "build": "vite build", 
+    "preview": "vite preview" 
+  },
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "three": "^0.169.0",
+    "three-addons": "^1.2.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}
