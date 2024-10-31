@@ -6,6 +6,12 @@ import { rHALF, directions } from "./tables.js";
 import { eflags, editorkeydown, editorwheel, toCellId, selcells, selobjs } from "./editor.js";
 import { walls, buildwalls, wflags } from "./walls.js";
 
+if (import.meta.hot) {
+  import.meta.hot.accept((newModule) => {
+    // Replace the old value with the new one
+  })
+}
+
 var xres, yres, canvas, txt;
 var keystate = [];
 var keytrigs = new Set();
